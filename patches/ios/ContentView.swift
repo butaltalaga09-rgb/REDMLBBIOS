@@ -14,8 +14,11 @@ private enum UIColors {
 private enum PickerKind { case inputFolder, inputFile, shaderFile, shaderFolder, outputFolder }
 
 struct ContentView: View {
-    @State private var pickerKind: PickerKind = .inputFile
-    @State private var showPicker = false
+    @State private var showInputFolderPicker = false
+    @State private var showInputFilePicker = false
+    @State private var showShaderFilePicker = false
+    @State private var showShaderFolderPicker = false
+    @State private var showOutputFolderPicker = false
     @State private var inputURL: URL?
     @State private var shaderURL: URL?
     @State private var outputURL: URL?
@@ -35,17 +38,6 @@ struct ContentView: View {
         Bundle.main.resourceURL?.appendingPathComponent("PythonApp/ios_shaders", isDirectory: true)
     }
     private var effectiveShaders: URL? { shaderURL ?? bundledShaders }
-    private var allowsMultipleSelection: Bool {
-        if case .shaderFile = pickerKind { return true }
-        return false
-    }
-    private var pickerTypes: [UTType] {
-        switch pickerKind {
-        case .inputFolder, .shaderFolder, .outputFolder: return [.folder]
-        case .inputFile: return [.item, .zip, UTType(filenameExtension: "unity3d") ?? .data, UTType(filenameExtension: "rar") ?? .archive]
-        case .shaderFile: return [.item, UTType(filenameExtension: "unity3d") ?? .data]
-        }
-    }
 
     var body: some View {
         NavigationView {
@@ -144,70 +136,11 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
             .navigationTitle("MLBB iOS Auto Converter")
             .navigationBarTitleDisplayMode(.inline)
-            .fileImporter(isPresented: $showPicker,
-                          allowedContentTypes: pickerTypes,
-                          allowsMultipleSelection: allowsMultipleSelection) { result in
-                switch result {
-                case .success(let urls):
-                    guard !urls.isEmpty else {
-                        status = "Nothing selected"
-                        return
-                    }
-                    do {
-                        let fm = FileManager.default
-                        let documents = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                        let inbox = documents.appendingPathComponent("Imported", isDirectory: true)
-                        try fm.createDirectory(at: inbox, withIntermediateDirectories: true)
-
-                        if case .shaderFile = pickerKind {
-                            let shaderInbox = inbox.appendingPathComponent("iOSShaders", isDirectory: true)
-                            try fm.createDirectory(at: shaderInbox, withIntermediateDirectories: true)
-                            var importedCount = 0
-                            for selectedURL in urls {
-                                let hasAccess = selectedURL.startAccessingSecurityScopedResource()
-                                defer { if hasAccess { selectedURL.stopAccessingSecurityScopedResource() } }
-                                let target = shaderInbox.appendingPathComponent(selectedURL.lastPathComponent)
-                                if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
-                                try copyCoordinatedItem(from: selectedURL, to: target)
-                                importedCount += 1
-                            }
-                            shaderURL = shaderInbox
-                            status = "Imported \(importedCount) shader file(s)"
-                            log += "\nImported \(importedCount) shader file(s) into \(shaderInbox.path)\n"
-                        } else {
-                            guard let selectedURL = urls.first else { return }
-                            let hasAccess = selectedURL.startAccessingSecurityScopedResource()
-                            defer { if hasAccess { selectedURL.stopAccessingSecurityScopedResource() } }
-                            let isFolder = (try? selectedURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-                            let target: URL
-                            switch pickerKind {
-                            case .inputFolder, .inputFile, .shaderFolder, .outputFolder:
-                                target = inbox.appendingPathComponent(selectedURL.lastPathComponent, isDirectory: isFolder)
-                                if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
-                                try copyCoordinatedItem(from: selectedURL, to: target)
-                                switch pickerKind {
-                                case .inputFolder, .inputFile: inputURL = target
-                                case .shaderFolder: shaderURL = target
-                                case .outputFolder: outputURL = target
-                                case .shaderFile: break
-                                }
-                            case .shaderFile:
-                                return
-                            }
-                            status = "Imported: " + target.lastPathComponent
-                            log += "\nImported: \(target.path)\n"
-                        }
-                    } catch {
-                        resultMessage = "Import failed: " + error.localizedDescription
-                        log += "\nIMPORT ERROR: " + error.localizedDescription + "\n"
-                        showResult = true
-                    }
-                case .failure(let error):
-                    resultMessage = "File picker failed: " + error.localizedDescription
-                    log += "\nPICKER ERROR: " + error.localizedDescription + "\n"
-                    showResult = true
-                }
-            }
+            .fileImporter(isPresented: $showInputFolderPicker, allowedContentTypes: [.folder]) { handleImport($0, kind: .inputFolder) }
+            .fileImporter(isPresented: $showInputFilePicker, allowedContentTypes: [.item, .zip, UTType(filenameExtension: "unity3d") ?? .data, UTType(filenameExtension: "rar") ?? .archive]) { handleImport($0, kind: .inputFile) }
+            .fileImporter(isPresented: $showShaderFilePicker, allowedContentTypes: [.item, UTType(filenameExtension: "unity3d") ?? .data], allowsMultipleSelection: true) { handleImport($0, kind: .shaderFile) }
+            .fileImporter(isPresented: $showShaderFolderPicker, allowedContentTypes: [.folder]) { handleImport($0, kind: .shaderFolder) }
+            .fileImporter(isPresented: $showOutputFolderPicker, allowedContentTypes: [.folder]) { handleImport($0, kind: .outputFolder) }
             .alert("MLBB iOS Auto Converter", isPresented: $showResult) {
                 Button("OK", role: .cancel) { }
                 if resultURL != nil { Button("Share Output") { if let resultURL { share(resultURL) } } }
@@ -236,7 +169,77 @@ struct ContentView: View {
         }
     }
 
-    private func openPicker(_ kind: PickerKind) { pickerKind = kind; showPicker = true }
+    private func openPicker(_ kind: PickerKind) {
+        switch kind {
+        case .inputFolder: showInputFolderPicker = true
+        case .inputFile: showInputFilePicker = true
+        case .shaderFile: showShaderFilePicker = true
+        case .shaderFolder: showShaderFolderPicker = true
+        case .outputFolder: showOutputFolderPicker = true
+        }
+        status = "Opening Files…"
+        log += "\\nOpening Files picker: \\(String(describing: kind))\\n"
+    }
+
+    private func handleImport(_ result: Result<[URL], Error>, kind: PickerKind) {
+        switch result {
+        case .success(let urls):
+            guard !urls.isEmpty else {
+                status = "Nothing selected"
+                log += "\\nNo file or folder selected.\\n"
+                return
+            }
+            do {
+                let fm = FileManager.default
+                let documents = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                let inbox = documents.appendingPathComponent("Imported", isDirectory: true)
+                try fm.createDirectory(at: inbox, withIntermediateDirectories: true)
+
+                if case .shaderFile = kind {
+                    let shaderInbox = inbox.appendingPathComponent("iOSShaders", isDirectory: true)
+                    try fm.createDirectory(at: shaderInbox, withIntermediateDirectories: true)
+                    var importedNames: [String] = []
+                    for selectedURL in urls {
+                        let hasAccess = selectedURL.startAccessingSecurityScopedResource()
+                        defer { if hasAccess { selectedURL.stopAccessingSecurityScopedResource() } }
+                        let target = shaderInbox.appendingPathComponent(selectedURL.lastPathComponent)
+                        if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
+                        try copyCoordinatedItem(from: selectedURL, to: target)
+                        importedNames.append(selectedURL.lastPathComponent)
+                    }
+                    shaderURL = shaderInbox
+                    status = "Imported \\(importedNames.count) shader file(s)"
+                    log += "\\nImported shader files: \\(importedNames.joined(separator: ", "))\\nFolder: \\(shaderInbox.path)\\n"
+                } else {
+                    guard let selectedURL = urls.first else { return }
+                    let hasAccess = selectedURL.startAccessingSecurityScopedResource()
+                    defer { if hasAccess { selectedURL.stopAccessingSecurityScopedResource() } }
+                    let isFolder = (try? selectedURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+                    let target = inbox.appendingPathComponent(selectedURL.lastPathComponent, isDirectory: isFolder)
+                    if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
+                    try copyCoordinatedItem(from: selectedURL, to: target)
+                    switch kind {
+                    case .inputFolder, .inputFile: inputURL = target
+                    case .shaderFolder: shaderURL = target
+                    case .outputFolder: outputURL = target
+                    case .shaderFile: break
+                    }
+                    status = "Imported: " + target.lastPathComponent
+                    log += "\\nImported: \\(target.path)\\n"
+                }
+            } catch {
+                resultMessage = "Import failed: " + error.localizedDescription
+                status = "Import failed"
+                log += "\\nIMPORT ERROR: " + error.localizedDescription + "\\n"
+                showResult = true
+            }
+        case .failure(let error):
+            resultMessage = "File picker failed: " + error.localizedDescription
+            status = "Picker failed"
+            log += "\\nPICKER ERROR: " + error.localizedDescription + "\\n"
+            showResult = true
+        }
+    }
 
     private func copyCoordinatedItem(from source: URL, to destination: URL) throws {
         var coordinationError: NSError?
