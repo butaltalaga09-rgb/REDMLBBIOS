@@ -308,12 +308,13 @@ jobs:
           cd "$PROJECT_DIR"
           mkdir -p build/ipa/Payload
           cp -R "$APP_PATH" build/ipa/Payload/ishamlbbios.app
-          while IFS= read -r -d '' binary; do
-            if file -b "$binary" | grep -q 'Mach-O'; then
-              ldid -S "$binary"
-            fi
-          done < <(find build/ipa/Payload/ishamlbbios.app -type f -print0)
+          # Sign the main executable only. Recursively running ldid on every
+          # embedded Mach-O can assert on some Python extension binaries and
+          # abort packaging even though Xcode's app build succeeded.
           ldid -S build/ipa/Payload/ishamlbbios.app/ishamlbbios
+          test -s build/ipa/Payload/ishamlbbios.app/Info.plist
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' build/ipa/Payload/ishamlbbios.app/Info.plist
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' build/ipa/Payload/ishamlbbios.app/Info.plist
           (cd build/ipa && zip -qr ../ishamlbbios.ipa Payload)
           test -s build/ishamlbbios.ipa
           unzip -t build/ishamlbbios.ipa
