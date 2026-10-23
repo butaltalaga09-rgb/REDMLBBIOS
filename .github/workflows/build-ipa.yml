@@ -173,7 +173,14 @@ jobs:
           test -d "$APP_PATH"
           plutil -lint "$APP_PATH/Info.plist"
           test -f "$APP_PATH/Frameworks/Python.framework/Python"
+          # Explicitly place the Python engine, site-packages and bundled shaders inside
+          # the app bundle. XcodeGen may treat this directory as a group, not a copied folder.
+          rm -rf "$APP_PATH/PythonApp"
+          ditto "$PROJECT_DIR/PythonApp" "$APP_PATH/PythonApp"
+          test -f "$APP_PATH/PythonApp/mlbb_ios_bridge.py"
+          test -f "$APP_PATH/PythonApp/site-packages/UnityPy/__init__.py"
           test -f "$APP_PATH/PythonApp/ios_shaders/ShaderVariants.unity3d"
+          echo "Verified embedded Python framework, Python source, dependencies and shader assets."
           echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
       - name: Package IPA for testing
