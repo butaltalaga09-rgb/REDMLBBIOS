@@ -53,6 +53,73 @@ jobs:
           PY
           echo "PROJECT_DIR=$GITHUB_WORKSPACE/source/MLBB_iOS_Converter_Offline_Project" >> "$GITHUB_ENV"
 
+      - name: Replace unreliable SwiftUI file importer with native document picker
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_SOURCE="$GITHUB_WORKSPACE/source/MLBB_iOS_Converter_Offline_Project/App"
+          cat > "$APP_SOURCE/DocumentPicker.swift" <<'SWIFT'
+          import SwiftUI
+          import UIKit
+          import UniformTypeIdentifiers
+
+          struct DocumentPicker: UIViewControllerRepresentable {
+              let onCompletion: (Result<[URL], Error>) -> Void
+
+              func makeCoordinator() -> Coordinator {
+                  Coordinator(onCompletion: onCompletion)
+              }
+
+              func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+                  let unityType = UTType(filenameExtension: "unity3d", conformingTo: .data) ?? .data
+                  let picker = UIDocumentPickerViewController(
+                      forOpeningContentTypes: [.zip, unityType],
+                      asCopy: true
+                  )
+                  picker.delegate = context.coordinator
+                  picker.allowsMultipleSelection = false
+                  return picker
+              }
+
+              func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
+
+              final class Coordinator: NSObject, UIDocumentPickerDelegate {
+                  private let onCompletion: (Result<[URL], Error>) -> Void
+
+                  init(onCompletion: @escaping (Result<[URL], Error>) -> Void) {
+                      self.onCompletion = onCompletion
+                  }
+
+                  func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+                      onCompletion(.success(urls))
+                  }
+
+                  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+                      onCompletion(.success([]))
+                  }
+              }
+          }
+          SWIFT
+
+          python - "$APP_SOURCE/ContentView.swift" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path(sys.argv[1])
+          source = path.read_text(encoding="utf-8")
+          start = source.find("            .fileImporter(")
+          end = source.find('            .alert("Conversion failed"', start)
+          if start < 0 or end < 0:
+              raise SystemExit("Could not safely locate the existing SwiftUI fileImporter block.")
+          source = source[:start] + '            .sheet(isPresented: $showImporter) {\n                DocumentPicker(onCompletion: handleImport)\n            }\n' + source[end:]
+          path.write_text(source, encoding="utf-8")
+          if ".fileImporter(" in source or "DocumentPicker(onCompletion: handleImport)" not in source:
+              raise SystemExit("File-picker replacement validation failed.")
+          helper = path.parent / "DocumentPicker.swift"
+          if not helper.is_file() or "UIDocumentPickerViewController" not in helper.read_text(encoding="utf-8"):
+              raise SystemExit("Native document-picker helper is missing.")
+          print("Patched ContentView to use UIDocumentPickerViewController with ZIP and UNITY3D selection.")
+          PY
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
