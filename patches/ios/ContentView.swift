@@ -141,7 +141,7 @@ struct ContentView: View {
             .navigationTitle("MLBB iOS Auto Converter")
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showPicker) {
-                DocumentPicker(types: pickerTypes, asCopy: pickerKind != .inputFolder && pickerKind != .shaderFolder && pickerKind != .outputFolder) { url in
+                DocumentPicker(types: pickerTypes, asCopy: true) { url in
                     guard let url else { return }
                     switch pickerKind {
                     case .inputFolder, .inputFile: inputURL = url
@@ -221,7 +221,7 @@ struct ContentView: View {
         }
     }
 
-    private func share(_ url: URL) { showShare = true }
+    private func share(_ url: URL) { resultURL = url; showShare = true }
 }
 
 private struct DocumentPicker: UIViewControllerRepresentable {
