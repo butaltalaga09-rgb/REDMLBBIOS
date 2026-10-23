@@ -275,7 +275,7 @@ jobs:
           HOST_STDLIB="$(python -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')"
           test -d "$HOST_STDLIB/encodings"
           mkdir -p "$APP_PATH/python/lib/python3.12"
-          rsync -a "$HOST_STDLIB/" "$APP_PATH/python/lib/python3.12/" \
+          rsync -a \
             --exclude 'lib-dynload/' \
             --exclude 'site-packages/' \
             --exclude 'dist-packages/' \
@@ -284,7 +284,8 @@ jobs:
             --exclude 'tkinter/' \
             --exclude 'idlelib/' \
             --exclude 'ensurepip/' \
-            --exclude 'venv/'
+            --exclude 'venv/' \
+            "$HOST_STDLIB/" "$APP_PATH/python/lib/python3.12/"
           # Install only iOS ARM64 extension modules at the runtime's importable path.
           IOS_DYNLOAD="$APP_PATH/python/lib-arm64/python3.12/lib-dynload"
           test -d "$IOS_DYNLOAD"
