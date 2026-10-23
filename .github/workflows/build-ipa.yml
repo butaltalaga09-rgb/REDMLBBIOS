@@ -308,13 +308,28 @@ jobs:
           cd "$PROJECT_DIR"
           mkdir -p build/ipa/Payload
           cp -R "$APP_PATH" build/ipa/Payload/ishamlbbios.app
-          # Sign the main executable only. Recursively running ldid on every
-          # embedded Mach-O can assert on some Python extension binaries and
-          # abort packaging even though Xcode's app build succeeded.
-          ldid -S build/ipa/Payload/ishamlbbios.app/ishamlbbios
-          test -s build/ipa/Payload/ishamlbbios.app/Info.plist
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' build/ipa/Payload/ishamlbbios.app/Info.plist
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' build/ipa/Payload/ishamlbbios.app/Info.plist
+          APP_BUNDLE="$PWD/build/ipa/Payload/ishamlbbios.app"
+          # UnityPy ships host-only FMOD libraries for Linux and macOS.
+          # They are not needed for iOS asset conversion and can break TrollStore's recursive signer.
+          rm -rf "$APP_BUNDLE/PythonApp/site-packages/UnityPy/lib/FMOD"
+          # Ensure non-Mach-O payloads are not marked as executable bundle code.
+          while IFS= read -r -d '' candidate; do
+            if [ -x "$candidate" ]; then
+              description="$(file -b "$candidate")"
+              if [[ "$description" != *"Mach-O"* ]]; then
+                chmod a-x "$candidate"
+                echo "Removed executable bit from non-Mach-O payload: $candidate ($description)"
+              fi
+            fi
+          done < <(find "$APP_BUNDLE" -type f -print0)
+          if find "$APP_BUNDLE" -type f -perm -111 -exec file -b {} \; | grep -q 'ELF'; then
+            echo "::error::ELF executable remains in the iOS app bundle."
+            exit 1
+          fi
+          ldid -S "$APP_BUNDLE/ishamlbbios"
+          test -s "$APP_BUNDLE/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_BUNDLE/Info.plist"
           (cd build/ipa && zip -qr ../ishamlbbios.ipa Payload)
           test -s build/ishamlbbios.ipa
           unzip -t build/ishamlbbios.ipa
