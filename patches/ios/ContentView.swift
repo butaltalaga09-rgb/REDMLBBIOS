@@ -139,8 +139,10 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
             .navigationTitle("MLBB iOS Auto Converter")
             .navigationBarTitleDisplayMode(.inline)
-            .fileImporter(isPresented: $showPicker, allowedContentTypes: pickerTypes, allowsMultipleSelection: pickerKindForCompletion == .shaderFile) { result in
-                handleImport(result, kind: pickerKindForCompletion)
+            .sheet(isPresented: $showPicker) {
+                NativeDocumentPicker(kind: pickerKindForCompletion) { result in
+                    handleImport(result, kind: pickerKindForCompletion)
+                }
             }
             .alert("MLBB iOS Auto Converter", isPresented: $showResult) {
                 Button("OK", role: .cancel) { }
@@ -296,6 +298,49 @@ struct ContentView: View {
     }
 
     private func share(_ url: URL) { resultURL = url; showShare = true }
+}
+
+/// Native document picker. Unlike SwiftUI fileImporter, this explicitly returns
+/// selected URLs through a coordinator and supports both files and folders.
+private struct NativeDocumentPicker: UIViewControllerRepresentable {
+    let kind: PickerKind
+    let completion: (Result<[URL], Error>) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(completion: completion)
+    }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let types: [UTType]
+        switch kind {
+        case .inputFolder, .shaderFolder, .outputFolder:
+            types = [.folder]
+        case .inputFile:
+            types = [.item, .archive]
+        case .shaderFile:
+            types = [.item]
+        }
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: false)
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = (kind == .shaderFile)
+        picker.shouldShowFileExtensions = true
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let completion: (Result<[URL], Error>) -> Void
+        init(completion: @escaping (Result<[URL], Error>) -> Void) {
+            self.completion = completion
+        }
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            completion(.success(urls))
+        }
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            completion(.success([]))
+        }
+    }
 }
 
 private struct ActivityView: UIViewControllerRepresentable {
