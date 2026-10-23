@@ -72,6 +72,18 @@ jobs:
           grep -q 'Stage 3/6: importing converter engine' "$PROJECT_DIR/PythonApp/mlbb_ios_bridge.py"
           grep -q 'Python argument tuple contains an uninitialized slot' "$PROJECT_DIR/App/ConverterBridge.m"
 
+      - name: Apply Windows-style converter interface
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_SOURCE="$GITHUB_WORKSPACE/source/MLBB_iOS_Converter_Offline_Project/App"
+          test -s patches/ios/ContentView.swift
+          cp patches/ios/ContentView.swift "$APP_SOURCE/ContentView.swift"
+          echo "Applied Windows-style iOS converter interface."
+          grep -q 'CONVERT TO iOS' "$APP_SOURCE/ContentView.swift"
+          grep -q 'Full texture validation' "$APP_SOURCE/ContentView.swift"
+          grep -q 'Preserve shadows' "$APP_SOURCE/ContentView.swift"
+
       - name: Replace unreliable SwiftUI file importer with native document picker
         shell: bash
         run: |
