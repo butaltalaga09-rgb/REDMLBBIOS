@@ -181,18 +181,16 @@ struct ContentView: View {
                             let isFolder = (try? selectedURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
                             let target: URL
                             switch pickerKind {
-                            case .inputFolder, .inputFile, .shaderFolder:
+                            case .inputFolder, .inputFile, .shaderFolder, .outputFolder:
                                 target = inbox.appendingPathComponent(selectedURL.lastPathComponent, isDirectory: isFolder)
                                 if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
                                 try copyCoordinatedItem(from: selectedURL, to: target)
-                                if case .inputFolder = pickerKind { inputURL = target }
-                                else if case .inputFile = pickerKind { inputURL = target }
-                                else { shaderURL = target }
-                            case .outputFolder:
-                                outputURL = selectedURL
-                                status = "Output folder selected"
-                                log += "\nOutput folder: \(selectedURL.path)\n"
-                                return
+                                switch pickerKind {
+                                case .inputFolder, .inputFile: inputURL = target
+                                case .shaderFolder: shaderURL = target
+                                case .outputFolder: outputURL = target
+                                case .shaderFile: break
+                                }
                             case .shaderFile:
                                 return
                             }
