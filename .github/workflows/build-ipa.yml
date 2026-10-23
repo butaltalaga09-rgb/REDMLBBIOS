@@ -5,7 +5,7 @@ on:
   push:
     branches: [main, master]
     paths:
-      - 'MLBB_iOS_Converter_Offline_Project.zip'
+      - 'MLBB_iOS_Converter_Offline_Project.zip.part*'
 
 permissions:
   contents: read
@@ -18,15 +18,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify the iOS project archive exists
+      - name: Reassemble and validate iOS project ZIP
         shell: bash
         run: |
           set -euo pipefail
-          if [ ! -f MLBB_iOS_Converter_Offline_Project.zip ]; then
-            echo "Missing MLBB_iOS_Converter_Offline_Project.zip in the repository root."
-            echo "Upload the project ZIP from the conversation to this repository, then run this workflow."
+          shopt -s nullglob
+          parts=(MLBB_iOS_Converter_Offline_Project.zip.part*)
+          if [ "${#parts[@]}" -ne 4 ]; then
+            echo "::error::Expected all four ZIP chunks in repository root; found ${#parts[@]}."
+            printf 'Found: %s\n' "${parts[@]}"
             exit 1
           fi
+          cat "${parts[@]}" > MLBB_iOS_Converter_Offline_Project.zip
+          unzip -t MLBB_iOS_Converter_Offline_Project.zip
 
       - name: Extract offline project
         shell: bash
