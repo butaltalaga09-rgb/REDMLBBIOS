@@ -16,6 +16,7 @@ private enum PickerKind { case inputFolder, inputFile, shaderFile, shaderFolder,
 struct ContentView: View {
     @State private var showPicker = false
     @State private var activePicker: PickerKind = .inputFile
+    @State private var pickerKindForCompletion: PickerKind = .inputFile
     @State private var inputURL: URL?
     @State private var shaderURL: URL?
     @State private var outputURL: URL?
@@ -36,16 +37,10 @@ struct ContentView: View {
     }
     private var effectiveShaders: URL? { shaderURL ?? bundledShaders }
 
-    private var pickerTypes: [UTType] {
-        switch activePicker {
-        case .inputFolder, .shaderFolder, .outputFolder:
-            return [.folder]
-        case .inputFile:
-            return [.item, .zip, UTType(filenameExtension: "unity3d") ?? .data, UTType(filenameExtension: "rar") ?? .archive]
-        case .shaderFile:
-            return [.item, UTType(filenameExtension: "unity3d") ?? .data]
-        }
-    }
+    // Keep the importer types stable. Changing allowedContentTypes at the same
+    // time as isPresented can make SwiftUI present a stale picker configuration.
+    // The handler validates the selected item according to pickerKindForCompletion.
+    private let pickerTypes: [UTType] = [.item, .folder, .archive]
 
     var body: some View {
         NavigationView {
@@ -144,7 +139,9 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
             .navigationTitle("MLBB iOS Auto Converter")
             .navigationBarTitleDisplayMode(.inline)
-            .fileImporter(isPresented: $showPicker, allowedContentTypes: pickerTypes, allowsMultipleSelection: activePicker == .shaderFile) { handleImport($0, kind: activePicker) }
+            .fileImporter(isPresented: $showPicker, allowedContentTypes: pickerTypes, allowsMultipleSelection: pickerKindForCompletion == .shaderFile) { result in
+                handleImport(result, kind: pickerKindForCompletion)
+            }
             .alert("MLBB iOS Auto Converter", isPresented: $showResult) {
                 Button("OK", role: .cancel) { }
                 if resultURL != nil { Button("Share Output") { if let resultURL { share(resultURL) } } }
@@ -174,7 +171,10 @@ struct ContentView: View {
     }
 
     private func openPicker(_ kind: PickerKind) {
+        // Save the intended action before presenting; don't depend on a view
+        // state value that may be recomputed while the document picker is open.
         activePicker = kind
+        pickerKindForCompletion = kind
         status = "Opening Files…"
         log += "\nOpening Files picker: \(String(describing: kind))\n"
         showPicker = true
