@@ -1,0 +1,168 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - 'MLBB_iOS_Converter_Offline_Project.zip'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify the iOS project archive exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f MLBB_iOS_Converter_Offline_Project.zip ]; then
+            echo "Missing MLBB_iOS_Converter_Offline_Project.zip in the repository root."
+            echo "Upload the project ZIP from the conversation to this repository, then run this workflow."
+            exit 1
+          fi
+
+      - name: Extract offline project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p source
+          unzip -q MLBB_iOS_Converter_Offline_Project.zip -d source
+          test -d source/MLBB_iOS_Converter_Offline_Project
+          echo "PROJECT_DIR=$GITHUB_WORKSPACE/source/MLBB_iOS_Converter_Offline_Project" >> "$GITHUB_ENV"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install build tools
+        run: brew install xcodegen ldid cmake ninja
+
+      - name: Download embedded iOS Python framework
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          mkdir -p Vendor
+          curl --fail --location --show-error --retry 5 --retry-all-errors             https://github.com/beeware/Python-Apple-support/releases/download/3.12-b12/Python-3.12-iOS-support.b12.tar.gz             -o /tmp/Python-3.12-iOS-support.tar.gz
+          tar -xzf /tmp/Python-3.12-iOS-support.tar.gz -C Vendor
+          FRAMEWORK="$(find Vendor -type d -name Python.xcframework -print -quit)"
+          if [ -z "$FRAMEWORK" ]; then
+            echo "Could not find Python.xcframework in the Python Apple-support archive." >&2
+            find Vendor -maxdepth 4 -print | head -200
+            exit 1
+          fi
+          if [ "$FRAMEWORK" != "$PROJECT_DIR/Vendor/Python.xcframework" ]; then
+            rm -rf Vendor/Python.xcframework
+            mv "$FRAMEWORK" Vendor/Python.xcframework
+          fi
+          test -d Vendor/Python.xcframework/ios-arm64/Python.framework
+          echo "Prepared embedded Python.xcframework."
+
+      - name: Run project and source checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          python tools/check_ios_project.py
+
+      - name: Prepare iOS cross-build environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          python3 -m venv .host-build-venv
+          . .host-build-venv/bin/activate
+          python -m pip install --upgrade pip xbuild
+          SYS_CONFIG="$(find Vendor/Python.xcframework/ios-arm64 -type f             \( -name '*sysconfig*iphoneos*' -o -name '*sysconfig*ios*arm64*' \) -print -quit)"
+          if [ -z "$SYS_CONFIG" ]; then
+            echo "Could not find the iOS ARM64 sysconfig file required for cross-building Python wheels." >&2
+            find Vendor/Python.xcframework/ios-arm64 -type f               \( -name '*sysconfig*' -o -name 'sitecustomize.py' \) -print | head -100
+            exit 1
+          fi
+          python -m venv .ios-venv
+          python -m xvenv --sysconfig "$SYS_CONFIG" .ios-venv
+          echo "IOS_SYS_CONFIG=$SYS_CONFIG" >> "$GITHUB_ENV"
+
+      - name: Cross-build Python dependencies for iOS ARM64
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          source .ios-venv/bin/activate
+          export PATH="$PROJECT_DIR/Vendor/Python.xcframework/ios-arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Library/Apple/usr/bin"
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --target "$PROJECT_DIR/PythonApp/site-packages" -r requirements-ios.txt
+          while IFS= read -r -d '' module; do
+            description="$(file -b "$module")"
+            if [[ "$description" == *"Mach-O"* ]] && [[ "$description" != *"arm64"* ]]; then
+              echo "Unexpected non-ARM64 native Python module: $module ($description)" >&2
+              exit 1
+            fi
+          done < <(find PythonApp/site-packages -type f \( -name '*.so' -o -name '*.dylib' \) -print0)
+          python tools/check_ios_project.py
+
+      - name: Generate Xcode project
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          xcodegen generate --spec project.yml
+
+      - name: Build iOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          xcodebuild             -project MLBBiOSConverter.xcodeproj             -scheme MLBBiOSConverter             -configuration Release             -sdk iphoneos             -destination 'generic/platform=iOS'             -derivedDataPath build/DerivedData             CODE_SIGNING_ALLOWED=NO             build
+          APP_PATH="$PROJECT_DIR/build/DerivedData/Build/Products/Release-iphoneos/ishamlbbios.app"
+          test -d "$APP_PATH"
+          plutil -lint "$APP_PATH/Info.plist"
+          test -f "$APP_PATH/Frameworks/Python.framework/Python"
+          test -f "$APP_PATH/PythonApp/ios_shaders/ShaderVariants.unity3d"
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Package IPA for testing
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          mkdir -p build/ipa/Payload
+          cp -R "$APP_PATH" build/ipa/Payload/ishamlbbios.app
+          while IFS= read -r -d '' binary; do
+            if file -b "$binary" | grep -q 'Mach-O'; then
+              ldid -S "$binary"
+            fi
+          done < <(find build/ipa/Payload/ishamlbbios.app -type f -print0)
+          ldid -S build/ipa/Payload/ishamlbbios.app/ishamlbbios
+          (cd build/ipa && zip -qr ../ishamlbbios.ipa Payload)
+          test -s build/ishamlbbios.ipa
+          unzip -t build/ishamlbbios.ipa
+
+      - name: Upload IPA artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MLBB-iOS-Converter-IPA
+          path: source/MLBB_iOS_Converter_Offline_Project/build/ishamlbbios.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload diagnostics if build fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MLBB-iOS-Converter-build-diagnostics
+          path: |
+            source/MLBB_iOS_Converter_Offline_Project/build/DerivedData/Logs/**
+            source/MLBB_iOS_Converter_Offline_Project/build/DerivedData/Build/Logs/**
+          if-no-files-found: ignore
+          retention-days: 7
