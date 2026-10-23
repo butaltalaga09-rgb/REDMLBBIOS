@@ -62,7 +62,7 @@ jobs:
             https://github.com/beeware/Python-Apple-support/releases/download/3.12-b12/Python-3.12-iOS-support.b12.tar.gz \
             -o /tmp/Python-3.12-iOS-support.tar.gz
           tar -xzf /tmp/Python-3.12-iOS-support.tar.gz -C Vendor
-          FRAMEWORK="$(find Vendor -type d -name Python.xcframework -print -quit)"
+          FRAMEWORK="$(find "$PROJECT_DIR/Vendor" -type d -name Python.xcframework -print -quit)"
           if [ -z "$FRAMEWORK" ]; then
             echo "Could not find Python.xcframework in the Python Apple-support archive." >&2
             find Vendor -maxdepth 4 -print | head -200
