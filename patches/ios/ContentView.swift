@@ -140,15 +140,37 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
             .navigationTitle("MLBB iOS Auto Converter")
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showPicker) {
-                DocumentPicker(types: pickerTypes, asCopy: true) { url in
-                    guard let url else { return }
-                    switch pickerKind {
-                    case .inputFolder, .inputFile: inputURL = url
-                    case .shaderFolder: shaderURL = url
-                    case .shaderFile: shaderURL = url.deletingLastPathComponent()
-                    case .outputFolder: outputURL = url
+            .fileImporter(isPresented: $showPicker,
+                          allowedContentTypes: pickerTypes,
+                          allowsMultipleSelection: false) { result in
+                switch result {
+                case .success(let urls):
+                    guard let selectedURL = urls.first else { return }
+                    let hasAccess = selectedURL.startAccessingSecurityScopedResource()
+                    defer { if hasAccess { selectedURL.stopAccessingSecurityScopedResource() } }
+                    do {
+                        let fm = FileManager.default
+                        let inbox = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                            .appendingPathComponent("Imported", isDirectory: true)
+                        try fm.createDirectory(at: inbox, withIntermediateDirectories: true)
+                        let isFolder = (try? selectedURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+                        let target = inbox.appendingPathComponent(selectedURL.lastPathComponent, isDirectory: isFolder)
+                        if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
+                        try fm.copyItem(at: selectedURL, to: target)
+                        switch pickerKind {
+                        case .inputFolder, .inputFile: inputURL = target
+                        case .shaderFolder: shaderURL = target
+                        case .shaderFile: shaderURL = target.deletingLastPathComponent()
+                        case .outputFolder: outputURL = target
+                        }
+                        status = "Selected: " + target.lastPathComponent
+                    } catch {
+                        resultMessage = "Could not import the selected item: " + error.localizedDescription
+                        showResult = true
                     }
+                case .failure(let error):
+                    resultMessage = "File picker failed: " + error.localizedDescription
+                    showResult = true
                 }
             }
             .alert("MLBB iOS Auto Converter", isPresented: $showResult) {
@@ -224,25 +246,6 @@ struct ContentView: View {
     private func share(_ url: URL) { resultURL = url; showShare = true }
 }
 
-private struct DocumentPicker: UIViewControllerRepresentable {
-    let types: [UTType]
-    let asCopy: Bool
-    let onPick: (URL?) -> Void
-    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: asCopy)
-        picker.delegate = context.coordinator
-        picker.allowsMultipleSelection = false
-        return picker
-    }
-    func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
-    final class Coordinator: NSObject, UIDocumentPickerDelegate {
-        let onPick: (URL?) -> Void
-        init(onPick: @escaping (URL?) -> Void) { self.onPick = onPick }
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { onPick(urls.first) }
-        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { onPick(nil) }
-    }
-}
 private struct ActivityView: UIViewControllerRepresentable {
     let items: [Any]
     func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: items, applicationActivities: nil) }
