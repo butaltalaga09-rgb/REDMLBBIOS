@@ -69,13 +69,24 @@ static void InitializeEmbeddedPython(void) {
     AppendNativeLog(@"initializing embedded Python");
     NSString *resourceRoot = NSBundle.mainBundle.resourcePath;
     NSString *frameworksRoot = NSBundle.mainBundle.privateFrameworksPath;
-    NSString *pythonHome = [frameworksRoot stringByAppendingPathComponent:@"Python.framework"];
+    // Python.framework contains the runtime binary, but is not PYTHONHOME.
+    // The matching Python-Apple-support slice is bundled as Resources/python
+    // and contains lib/python3.12 plus the standard library and extension modules.
+    NSString *pythonHome = [resourceRoot stringByAppendingPathComponent:@"python"];
+    NSString *pythonFramework = [frameworksRoot stringByAppendingPathComponent:@"Python.framework"];
+    NSString *pythonLib = [pythonHome stringByAppendingPathComponent:@"lib"];
     NSString *pythonApp = [resourceRoot stringByAppendingPathComponent:@"PythonApp"];
     NSString *sitePackages = [pythonApp stringByAppendingPathComponent:@"site-packages"];
 
-    if (![[NSFileManager defaultManager] fileExistsAtPath:pythonHome]) {
+    if (![[NSFileManager defaultManager] fileExistsAtPath:pythonFramework]) {
         gPythonError = @"The embedded Python.framework is missing from this IPA.";
         AppendNativeLog(gPythonError);
+        return;
+    }
+    if (![[NSFileManager defaultManager] fileExistsAtPath:pythonHome] ||
+        ![[NSFileManager defaultManager] fileExistsAtPath:pythonLib]) {
+        gPythonError = @"The complete Python home is missing: expected Resources/python/lib. Rebuild and reinstall the latest IPA.";
+        AppendNativeLog([NSString stringWithFormat:@"%@ (home=%@; lib=%@)", gPythonError, pythonHome, pythonLib]);
         return;
     }
     if (![[NSFileManager defaultManager] fileExistsAtPath:pythonApp]) {
@@ -84,6 +95,7 @@ static void InitializeEmbeddedPython(void) {
         return;
     }
 
+    AppendNativeLog([NSString stringWithFormat:@"Python home=%@; lib exists; app=%@", pythonHome, pythonApp]);
     setenv("PYTHONHOME", pythonHome.fileSystemRepresentation, 1);
     setenv("PYTHONPATH", [NSString stringWithFormat:@"%@:%@", pythonApp, sitePackages].UTF8String, 1);
     setenv("PYTHONDONTWRITEBYTECODE", "1", 1);
