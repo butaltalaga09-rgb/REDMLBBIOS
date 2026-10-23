@@ -50,7 +50,13 @@ jobs:
           spec = path.read_text(encoding="utf-8")
           if '"15.0"' not in spec:
               raise SystemExit("Expected iOS 15 deployment target entries were not found.")
-          path.write_text(spec.replace('"15.0"', '"16.0"'), encoding="utf-8")
+          spec = spec.replace('"15.0"', '"16.0"')
+          # TrollStore reads these generated bundle version keys from Info.plist.
+          marker = '        PRODUCT_NAME: ishamlbbios'
+          if marker not in spec:
+              raise SystemExit("Could not find the app target settings to set bundle versions.")
+          spec = spec.replace(marker, marker + '\n        MARKETING_VERSION: "1.0.0"\n        CURRENT_PROJECT_VERSION: "1"\n        INFOPLIST_KEY_CFBundleShortVersionString: "1.0.0"\n        INFOPLIST_KEY_CFBundleVersion: "1"')
+          path.write_text(spec, encoding="utf-8")
           PY
           echo "PROJECT_DIR=$GITHUB_WORKSPACE/source/MLBB_iOS_Converter_Offline_Project" >> "$GITHUB_ENV"
 
@@ -252,14 +258,40 @@ jobs:
           APP_PATH="$PROJECT_DIR/build/DerivedData/Build/Products/Release-iphoneos/ishamlbbios.app"
           test -d "$APP_PATH"
           plutil -lint "$APP_PATH/Info.plist"
+          # Set version keys on the final bundle as a last-line safeguard for TrollStore.
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 1.0.0' "$APP_PATH/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c 'Add :CFBundleShortVersionString string 1.0.0' "$APP_PATH/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 1' "$APP_PATH/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c 'Add :CFBundleVersion string 1' "$APP_PATH/Info.plist"
+          plutil -lint "$APP_PATH/Info.plist"
           test -f "$APP_PATH/Frameworks/Python.framework/Python"
           # Explicitly place the Python engine, site-packages and bundled shaders inside
           # the app bundle. XcodeGen may treat this directory as a group, not a copied folder.
           rm -rf "$APP_PATH/PythonApp" "$APP_PATH/python"
           ditto "$PROJECT_DIR/PythonApp" "$APP_PATH/PythonApp"
-          # The framework binary alone is NOT a Python home. Bundle the matching
-          # iOS ARM64 support slice so PYTHONHOME has its lib/ standard library.
+          # Bundle the iOS Python support slice (runtime + ARM64 iOS extension modules).
           ditto "$PROJECT_DIR/Vendor/Python.xcframework/ios-arm64" "$APP_PATH/python"
+          # Python-Apple-support's iOS slice does not ship the pure-Python stdlib at
+          # $PYTHONHOME/lib/python3.12. Copy it from the matching host Python 3.12 install,
+          # excluding host-only native modules and test/development packages.
+          HOST_STDLIB="$(python -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')"
+          test -d "$HOST_STDLIB/encodings"
+          mkdir -p "$APP_PATH/python/lib/python3.12"
+          rsync -a "$HOST_STDLIB/" "$APP_PATH/python/lib/python3.12/" \
+            --exclude 'lib-dynload/' \
+            --exclude 'site-packages/' \
+            --exclude 'dist-packages/' \
+            --exclude 'test/' \
+            --exclude 'tests/' \
+            --exclude 'tkinter/' \
+            --exclude 'idlelib/' \
+            --exclude 'ensurepip/' \
+            --exclude 'venv/'
+          # Install only iOS ARM64 extension modules at the runtime's importable path.
+          IOS_DYNLOAD="$APP_PATH/python/lib-arm64/python3.12/lib-dynload"
+          test -d "$IOS_DYNLOAD"
+          mkdir -p "$APP_PATH/python/lib/python3.12/lib-dynload"
+          ditto "$IOS_DYNLOAD" "$APP_PATH/python/lib/python3.12/lib-dynload"
+          test -f "$APP_PATH/python/lib/python3.12/encodings/__init__.py"
+          test -f "$APP_PATH/python/lib/python3.12/os.py"
           test -f "$APP_PATH/PythonApp/mlbb_ios_bridge.py"
           test -f "$APP_PATH/PythonApp/site-packages/UnityPy/__init__.py"
           test -f "$APP_PATH/PythonApp/ios_shaders/ShaderVariants.unity3d"
