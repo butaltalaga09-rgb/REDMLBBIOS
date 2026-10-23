@@ -14,11 +14,8 @@ private enum UIColors {
 private enum PickerKind { case inputFolder, inputFile, shaderFile, shaderFolder, outputFolder }
 
 struct ContentView: View {
-    @State private var showInputFolderPicker = false
-    @State private var showInputFilePicker = false
-    @State private var showShaderFilePicker = false
-    @State private var showShaderFolderPicker = false
-    @State private var showOutputFolderPicker = false
+    @State private var showPicker = false
+    @State private var activePicker: PickerKind = .inputFile
     @State private var inputURL: URL?
     @State private var shaderURL: URL?
     @State private var outputURL: URL?
@@ -38,6 +35,17 @@ struct ContentView: View {
         Bundle.main.resourceURL?.appendingPathComponent("PythonApp/ios_shaders", isDirectory: true)
     }
     private var effectiveShaders: URL? { shaderURL ?? bundledShaders }
+
+    private var pickerTypes: [UTType] {
+        switch activePicker {
+        case .inputFolder, .shaderFolder, .outputFolder:
+            return [.folder]
+        case .inputFile:
+            return [.item, .zip, UTType(filenameExtension: "unity3d") ?? .data, UTType(filenameExtension: "rar") ?? .archive]
+        case .shaderFile:
+            return [.item, UTType(filenameExtension: "unity3d") ?? .data]
+        }
+    }
 
     var body: some View {
         NavigationView {
@@ -136,11 +144,7 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
             .navigationTitle("MLBB iOS Auto Converter")
             .navigationBarTitleDisplayMode(.inline)
-            .fileImporter(isPresented: $showInputFolderPicker, allowedContentTypes: [.folder]) { handleImport($0, kind: .inputFolder) }
-            .fileImporter(isPresented: $showInputFilePicker, allowedContentTypes: [.item, .zip, UTType(filenameExtension: "unity3d") ?? .data, UTType(filenameExtension: "rar") ?? .archive]) { handleImport($0, kind: .inputFile) }
-            .fileImporter(isPresented: $showShaderFilePicker, allowedContentTypes: [.item, UTType(filenameExtension: "unity3d") ?? .data], allowsMultipleSelection: true) { handleImport($0, kind: .shaderFile) }
-            .fileImporter(isPresented: $showShaderFolderPicker, allowedContentTypes: [.folder]) { handleImport($0, kind: .shaderFolder) }
-            .fileImporter(isPresented: $showOutputFolderPicker, allowedContentTypes: [.folder]) { handleImport($0, kind: .outputFolder) }
+            .fileImporter(isPresented: $showPicker, allowedContentTypes: pickerTypes, allowsMultipleSelection: activePicker == .shaderFile) { handleImport($0, kind: activePicker) }
             .alert("MLBB iOS Auto Converter", isPresented: $showResult) {
                 Button("OK", role: .cancel) { }
                 if resultURL != nil { Button("Share Output") { if let resultURL { share(resultURL) } } }
@@ -170,15 +174,10 @@ struct ContentView: View {
     }
 
     private func openPicker(_ kind: PickerKind) {
-        switch kind {
-        case .inputFolder: showInputFolderPicker = true
-        case .inputFile: showInputFilePicker = true
-        case .shaderFile: showShaderFilePicker = true
-        case .shaderFolder: showShaderFolderPicker = true
-        case .outputFolder: showOutputFolderPicker = true
-        }
+        activePicker = kind
         status = "Opening Files…"
         log += "\nOpening Files picker: \(String(describing: kind))\n"
+        showPicker = true
     }
 
     private func handleImport(_ result: Result<[URL], Error>, kind: PickerKind) {
