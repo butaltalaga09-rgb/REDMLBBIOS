@@ -312,6 +312,25 @@ jobs:
           # UnityPy ships host-only FMOD libraries for Linux and macOS.
           # They are not needed for iOS asset conversion and can break TrollStore's recursive signer.
           rm -rf "$APP_BUNDLE/PythonApp/site-packages/UnityPy/lib/FMOD"
+          # Remove a build-only universal Mach-O object that TrollStore's recursive
+          # signer may mistake for a loadable executable.
+          rm -f "$APP_BUNDLE/python/lib/python3.12/config-3.12-darwin/python.o"
+          # Thin Python framework binaries to plain arm64 Mach-O headers. The vendor
+          # framework contains one-arm64 fat wrappers (CAFEBABE) that ldid may reject.
+          while IFS= read -r -d '' candidate; do
+            description="$(file -b "$candidate")"
+            if [[ "$description" == *"Mach-O universal binary"* ]]; then
+              if lipo -verify_arch arm64 "$candidate" >/dev/null 2>&1; then
+                temp_file="${candidate}.arm64"
+                lipo "$candidate" -thin arm64 -output "$temp_file"
+                mv "$temp_file" "$candidate"
+                echo "Thinned universal Mach-O to arm64: $candidate"
+              else
+                echo "::error::Universal Mach-O has no arm64 slice: $candidate ($description)"
+                exit 1
+              fi
+            fi
+          done < <(find "$APP_BUNDLE" -type f -print0)
           # Ensure non-Mach-O payloads are not marked as executable bundle code.
           while IFS= read -r -d '' candidate; do
             if [ -x "$candidate" ]; then
