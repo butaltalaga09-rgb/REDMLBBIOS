@@ -2,6 +2,12 @@ name: Build iOS IPA
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-ipa.yml'
+      - 'MLBB_iOS_Converter_Offline_Project.zip.part*'
+      - 'patches/ios/**'
   push:
     branches: [main, master, windows-style-ios-ui]
     paths:
