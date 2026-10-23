@@ -40,6 +40,17 @@ jobs:
           mkdir -p source
           unzip -q MLBB_iOS_Converter_Offline_Project.zip -d source
           test -d source/MLBB_iOS_Converter_Offline_Project
+          # ContentView uses NavigationStack and ShareLink, introduced in iOS 16.
+          PROJECT_SPEC=source/MLBB_iOS_Converter_Offline_Project/project.yml
+          python - "$PROJECT_SPEC" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path(sys.argv[1])
+          spec = path.read_text(encoding="utf-8")
+          if '"15.0"' not in spec:
+              raise SystemExit("Expected iOS 15 deployment target entries were not found.")
+          path.write_text(spec.replace('"15.0"', '"16.0"'), encoding="utf-8")
+          PY
           echo "PROJECT_DIR=$GITHUB_WORKSPACE/source/MLBB_iOS_Converter_Offline_Project" >> "$GITHUB_ENV"
 
       - name: Set up Python 3.12
