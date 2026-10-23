@@ -113,8 +113,77 @@ static void InitializeEmbeddedPython(void) {
     setenv("PYTHONNOUSERSITE", "1", 1);
     setenv("PYTHONFAULTHANDLER", "1", 1);
 
-    AppendNativeLog(@"calling Py_Initialize");
-    Py_Initialize();
+    AppendNativeLog(@"calling Py_InitializeFromConfig with explicit iOS paths");
+    /*
+     * Do not rely on environment-variable path discovery on iOS.  In the
+     * previous build the process died inside Py_Initialize before it could
+     * write another log line.  Isolated PyConfig makes the stdlib and
+     * extension-module search paths explicit and reports normal init errors.
+     */
+    PyConfig config;
+    PyConfig_InitIsolatedConfig(&config);
+    config.use_environment = 0;
+    config.user_site_directory = 0;
+    config.write_bytecode = 0;
+    wchar_t *homeWide = Py_DecodeLocale(pythonHome.fileSystemRepresentation, NULL);
+    wchar_t *programWide = Py_DecodeLocale("ishamlbbios", NULL);
+    if (homeWide == NULL || programWide == NULL) {
+        if (homeWide) PyMem_RawFree(homeWide);
+        if (programWide) PyMem_RawFree(programWide);
+        PyConfig_Clear(&config);
+        gPythonError = @"Could not encode embedded Python paths for initialization.";
+        AppendNativeLog(gPythonError);
+        return;
+    }
+    PyStatus configStatus = PyConfig_SetString(&config, &config.home, homeWide);
+    if (!PyStatus_Exception(configStatus)) configStatus = PyConfig_SetString(&config, &config.program_name, programWide);
+    PyMem_RawFree(homeWide);
+    PyMem_RawFree(programWide);
+    if (!PyStatus_Exception(configStatus)) {
+        config.module_search_paths_set = 1;
+        configStatus = PyWideStringList_Append(&config.module_search_paths,
+            Py_DecodeLocale(pythonStdlib.fileSystemRepresentation, NULL));
+    }
+    if (!PyStatus_Exception(configStatus)) {
+        wchar_t *dynloadWide = Py_DecodeLocale(pythonDynload.fileSystemRepresentation, NULL);
+        if (dynloadWide == NULL) configStatus = PyStatus_Error("Could not encode Python extension path");
+        else {
+            configStatus = PyWideStringList_Append(&config.module_search_paths, dynloadWide);
+            PyMem_RawFree(dynloadWide);
+        }
+    }
+    if (!PyStatus_Exception(configStatus)) {
+        wchar_t *appWide = Py_DecodeLocale(pythonApp.fileSystemRepresentation, NULL);
+        if (appWide == NULL) configStatus = PyStatus_Error("Could not encode Python app path");
+        else {
+            configStatus = PyWideStringList_Append(&config.module_search_paths, appWide);
+            PyMem_RawFree(appWide);
+        }
+    }
+    if (!PyStatus_Exception(configStatus)) {
+        wchar_t *siteWide = Py_DecodeLocale(sitePackages.fileSystemRepresentation, NULL);
+        if (siteWide == NULL) configStatus = PyStatus_Error("Could not encode site-packages path");
+        else {
+            configStatus = PyWideStringList_Append(&config.module_search_paths, siteWide);
+            PyMem_RawFree(siteWide);
+        }
+    }
+    if (PyStatus_Exception(configStatus)) {
+        gPythonError = [NSString stringWithFormat:@"Python configuration failed: %s",
+            configStatus.err_msg ? configStatus.err_msg : "unknown PyConfig error"];
+        AppendNativeLog(gPythonError);
+        PyConfig_Clear(&config);
+        return;
+    }
+    configStatus = Py_InitializeFromConfig(&config);
+    if (PyStatus_Exception(configStatus)) {
+        gPythonError = [NSString stringWithFormat:@"Python initialization failed: %s",
+            configStatus.err_msg ? configStatus.err_msg : "unknown Py_InitializeFromConfig error"];
+        AppendNativeLog(gPythonError);
+        PyConfig_Clear(&config);
+        return;
+    }
+    PyConfig_Clear(&config);
     if (!Py_IsInitialized()) {
         gPythonError = @"Could not initialize the embedded Python runtime.";
         AppendNativeLog(gPythonError);
