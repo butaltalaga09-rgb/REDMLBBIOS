@@ -110,10 +110,11 @@ jobs:
           source .ios-venv/bin/activate
           export PATH="$PROJECT_DIR/Vendor/Python.xcframework/ios-arm64/bin:$PATH"
           python -m pip install --upgrade pip setuptools wheel
-          # Do not let pkg-config select macOS Homebrew libraries for an iOS binary.
-          # Pillow is still useful to UnityPy, but optional host codecs must stay disabled
-          # unless their native libraries have been built for iOS as well.
+          # Prevent macOS Homebrew libraries from leaking into iOS cross-builds.
+          unset PKG_CONFIG_PATH
+          export PKG_CONFIG_LIBDIR=/nonexistent
           export PYLZ4_USE_SYSTEM_LZ4=False
+          # Name Pillow explicitly so pip forwards these feature settings to its build backend.
           python -m pip install --target "$PROJECT_DIR/PythonApp/site-packages" \
             -C zlib=disable \
             -C jpeg=disable \
@@ -125,6 +126,7 @@ jobs:
             -C jpeg2000=disable \
             -C imagequant=disable \
             -C xcb=disable \
+            "Pillow>=10.0.0,<12" \
             -r requirements-ios.txt
           while IFS= read -r -d '' module; do
             description="$(file -b "$module")"
