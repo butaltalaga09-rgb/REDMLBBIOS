@@ -139,11 +139,15 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
             .navigationTitle("MLBB iOS Auto Converter")
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showPicker) {
-                NativeDocumentPicker(kind: pickerKindForCompletion) { result in
+            .background(
+                NativeDocumentPickerPresenter(
+                    isPresented: $showPicker,
+                    kind: pickerKindForCompletion
+                ) { result in
                     handleImport(result, kind: pickerKindForCompletion)
                 }
-            }
+                .frame(width: 0, height: 0)
+            )
             .alert("MLBB iOS Auto Converter", isPresented: $showResult) {
                 Button("OK", role: .cancel) { }
                 if resultURL != nil { Button("Share Output") { if let resultURL { share(resultURL) } } }
@@ -300,45 +304,81 @@ struct ContentView: View {
     private func share(_ url: URL) { resultURL = url; showShare = true }
 }
 
-/// Native document picker. Unlike SwiftUI fileImporter, this explicitly returns
-/// selected URLs through a coordinator and supports both files and folders.
-private struct NativeDocumentPicker: UIViewControllerRepresentable {
+/// Presents UIDocumentPickerViewController directly from a transparent UIKit
+/// host. It is deliberately not embedded inside a SwiftUI .sheet, because that
+/// can leave the SwiftUI presentation active after the system picker closes.
+private struct NativeDocumentPickerPresenter: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
     let kind: PickerKind
     let completion: (Result<[URL], Error>) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(completion: completion)
+        Coordinator()
     }
 
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let types: [UTType]
-        switch kind {
-        case .inputFolder, .shaderFolder, .outputFolder:
-            types = [.folder]
-        case .inputFile:
-            types = [.item, .archive]
-        case .shaderFile:
-            types = [.item]
-        }
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: false)
-        picker.delegate = context.coordinator
-        picker.allowsMultipleSelection = (kind == .shaderFile)
-        picker.shouldShowFileExtensions = true
-        return picker
+    func makeUIViewController(context: Context) -> UIViewController {
+        let controller = UIViewController()
+        controller.view.backgroundColor = .clear
+        controller.view.isUserInteractionEnabled = false
+        return controller
     }
 
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+    func updateUIViewController(_ controller: UIViewController, context: Context) {
+        guard isPresented, controller.view.window != nil else { return }
+        context.coordinator.presentIfNeeded(
+            from: controller,
+            kind: kind,
+            completion: completion,
+            setPresented: { isPresented = $0 }
+        )
+    }
 
     final class Coordinator: NSObject, UIDocumentPickerDelegate {
-        let completion: (Result<[URL], Error>) -> Void
-        init(completion: @escaping (Result<[URL], Error>) -> Void) {
+        private var isShowingPicker = false
+        private var completion: ((Result<[URL], Error>) -> Void)?
+        private var setPresented: ((Bool) -> Void)?
+
+        func presentIfNeeded(
+            from presenter: UIViewController,
+            kind: PickerKind,
+            completion: @escaping (Result<[URL], Error>) -> Void,
+            setPresented: @escaping (Bool) -> Void
+        ) {
+            guard !isShowingPicker else { return }
+            let types: [UTType]
+            switch kind {
+            case .inputFolder, .shaderFolder, .outputFolder:
+                types = [.folder]
+            case .inputFile:
+                types = [.item, .archive]
+            case .shaderFile:
+                types = [.item]
+            }
+
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: false)
+            picker.delegate = self
+            picker.allowsMultipleSelection = (kind == .shaderFile)
+            picker.shouldShowFileExtensions = true
             self.completion = completion
+            self.setPresented = setPresented
+            isShowingPicker = true
+            presenter.present(picker, animated: true)
         }
+
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            completion(.success(urls))
+            isShowingPicker = false
+            setPresented?(false)
+            completion?(.success(urls))
+            completion = nil
+            setPresented = nil
         }
+
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-            completion(.success([]))
+            isShowingPicker = false
+            setPresented?(false)
+            completion?(.success([]))
+            completion = nil
+            setPresented = nil
         }
     }
 }
