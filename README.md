@@ -1,20 +1,20 @@
-# MLBB iOS Auto Converter — iOS port
+# MLBB iOS Auto Converter — ishamlbbios
 
-This repository is the separate iOS port of the existing MLBB iOS Auto Converter.
+This is the separate iOS port of the MLBB iOS Auto Converter. The Android project remains in `ISHAMLBBIOS`.
 
-## Current status
+## iOS project archive
 
-**Work in progress — no installable IPA has been validated yet.**
+Download **`MLBB_iOS_Converter_Offline_Project.zip`** from the ChatGPT conversation and extract its contents into the root of this repository. The archive contains the SwiftUI app, Objective-C/Python bridge, converter engine, ShaderVariants bundle assets, app icon, requirements, validation script, and the IPA build workflow.
 
-The existing Python conversion engine and bundled iOS ShaderVariants are the source of truth. The iOS port needs an iOS-native file picker and output handling, a supported embedded Python runtime, and iOS-compatible builds of UnityPy's native dependencies.
+This repository currently holds the workflow scaffold; the large Unity bundle assets and the full converter source are not committed here yet. The build action intentionally checks for those files before attempting a build.
 
-A successful Xcode build alone is not considered sufficient. The build must also pass a converter smoke test and validate that the bundled ShaderVariants can be loaded and round-tripped before the IPA is advertised as usable.
+## Build
 
-## Planned output
+After the archive contents are extracted and pushed to this repository, open **Actions → Build iOS IPA → Run workflow**. A successful run uploads an IPA artifact.
 
-- iOS ARM64 app, branded `ishamlbbios`
-- Offline conversion workflow
-- Import of `.unity3d` and ZIP files through the iOS Files picker
-- Output saved under the app's Documents directory, with export/share support
+## Status and limitations
 
-The Android app and its build workflow are kept in the original `ISHAMLBBIOS` repository. This repository is for the separate iOS implementation.
+- No validated installable IPA has been produced from this repository yet.
+- The workflow must build iOS ARM64 Python dependencies; macOS/Linux native wheels cannot be used in an iOS app.
+- Static checks and a successful Xcode build do not prove that real hero materials and textures convert correctly. Test an actual copy of a Unity bundle before relying on the app.
+- The initial testing IPA is not Apple App Store distribution signed; distribution requires the appropriate Apple signing and provisioning setup.
