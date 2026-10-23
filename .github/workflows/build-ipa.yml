@@ -108,7 +108,7 @@ jobs:
           set -euo pipefail
           cd "$PROJECT_DIR"
           source .ios-venv/bin/activate
-          export PATH="$PATH:$PROJECT_DIR/Vendor/Python.xcframework/ios-arm64/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Library/Apple/usr/bin"
+          export PATH="$PROJECT_DIR/Vendor/Python.xcframework/ios-arm64/bin:$PATH"
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install --target "$PROJECT_DIR/PythonApp/site-packages" -r requirements-ios.txt
           while IFS= read -r -d '' module; do
