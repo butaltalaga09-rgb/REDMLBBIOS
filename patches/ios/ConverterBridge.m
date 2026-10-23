@@ -75,6 +75,8 @@ static void InitializeEmbeddedPython(void) {
     NSString *pythonHome = [resourceRoot stringByAppendingPathComponent:@"python"];
     NSString *pythonFramework = [frameworksRoot stringByAppendingPathComponent:@"Python.framework"];
     NSString *pythonLib = [pythonHome stringByAppendingPathComponent:@"lib"];
+    NSString *pythonStdlib = [pythonLib stringByAppendingPathComponent:@"python3.12"];
+    NSString *pythonDynload = [pythonStdlib stringByAppendingPathComponent:@"lib-dynload"];
     NSString *pythonApp = [resourceRoot stringByAppendingPathComponent:@"PythonApp"];
     NSString *sitePackages = [pythonApp stringByAppendingPathComponent:@"site-packages"];
 
@@ -84,9 +86,11 @@ static void InitializeEmbeddedPython(void) {
         return;
     }
     if (![[NSFileManager defaultManager] fileExistsAtPath:pythonHome] ||
-        ![[NSFileManager defaultManager] fileExistsAtPath:pythonLib]) {
-        gPythonError = @"The complete Python home is missing: expected Resources/python/lib. Rebuild and reinstall the latest IPA.";
-        AppendNativeLog([NSString stringWithFormat:@"%@ (home=%@; lib=%@)", gPythonError, pythonHome, pythonLib]);
+        ![[NSFileManager defaultManager] fileExistsAtPath:pythonLib] ||
+        ![[NSFileManager defaultManager] fileExistsAtPath:[pythonStdlib stringByAppendingPathComponent:@"encodings/__init__.py"]] ||
+        ![[NSFileManager defaultManager] fileExistsAtPath:pythonDynload]) {
+        gPythonError = @"The embedded Python standard library is incomplete. Expected python/lib/python3.12/encodings and lib-dynload.";
+        AppendNativeLog([NSString stringWithFormat:@"%@ (home=%@; lib=%@; stdlib=%@; dynload=%@)", gPythonError, pythonHome, pythonLib, pythonStdlib, pythonDynload]);
         return;
     }
     if (![[NSFileManager defaultManager] fileExistsAtPath:pythonApp]) {
@@ -97,8 +101,15 @@ static void InitializeEmbeddedPython(void) {
 
     AppendNativeLog([NSString stringWithFormat:@"Python home=%@; lib exists; app=%@", pythonHome, pythonApp]);
     setenv("PYTHONHOME", pythonHome.fileSystemRepresentation, 1);
-    setenv("PYTHONPATH", [NSString stringWithFormat:@"%@:%@", pythonApp, sitePackages].UTF8String, 1);
+    // Py_Initialize can abort before returning if it cannot locate the filesystem
+    // encoding module. Provide the iOS stdlib and extension-module paths explicitly
+    // instead of relying solely on runtime path discovery.
+    NSString *pythonSearchPath = [NSString stringWithFormat:@"%@:%@:%@:%@", pythonStdlib, pythonDynload, pythonApp, sitePackages];
+    setenv("PYTHONPATH", pythonSearchPath.UTF8String, 1);
     setenv("PYTHONDONTWRITEBYTECODE", "1", 1);
+    setenv("PYTHONUTF8", "1", 1);
+    setenv("PYTHONCOERCECLOCALE", "0", 1);
+    AppendNativeLog([NSString stringWithFormat:@"Python search path configured: stdlib=%@; dynload=%@; app=%@; site-packages=%@", pythonStdlib, pythonDynload, pythonApp, sitePackages]);
     setenv("PYTHONNOUSERSITE", "1", 1);
     setenv("PYTHONFAULTHANDLER", "1", 1);
 
