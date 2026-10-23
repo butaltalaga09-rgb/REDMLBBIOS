@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/build-ipa.yml'
       - 'MLBB_iOS_Converter_Offline_Project.zip.part*'
+      - 'patches/ios/**'
 
 permissions:
   contents: read
@@ -52,6 +53,18 @@ jobs:
           path.write_text(spec.replace('"15.0"', '"16.0"'), encoding="utf-8")
           PY
           echo "PROJECT_DIR=$GITHUB_WORKSPACE/source/MLBB_iOS_Converter_Offline_Project" >> "$GITHUB_ENV"
+
+      - name: Apply repository iOS conversion crash fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f patches/ios/mlbb_ios_bridge.py
+          test -f patches/ios/ConverterBridge.m
+          cp patches/ios/mlbb_ios_bridge.py "$PROJECT_DIR/PythonApp/mlbb_ios_bridge.py"
+          cp patches/ios/ConverterBridge.m "$PROJECT_DIR/App/ConverterBridge.m"
+          echo "Applied repository-maintained Python diagnostics and defensive native bridge."
+          grep -q 'Stage 3/6: importing converter engine' "$PROJECT_DIR/PythonApp/mlbb_ios_bridge.py"
+          grep -q 'Python argument tuple contains an uninitialized slot' "$PROJECT_DIR/App/ConverterBridge.m"
 
       - name: Replace unreliable SwiftUI file importer with native document picker
         shell: bash
