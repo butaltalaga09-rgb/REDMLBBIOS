@@ -320,13 +320,23 @@ jobs:
           while IFS= read -r -d '' candidate; do
             description="$(file -b "$candidate")"
             if [[ "$description" == *"Mach-O universal binary"* ]]; then
-              if lipo -verify_arch arm64 "$candidate" >/dev/null 2>&1; then
+              # lipo -verify_arch can return nonzero on some single-slice fat wrappers,
+              # even though lipo -info reports an arm64 slice. Use the reported arch list.
+              lipo_info="$(lipo -info "$candidate" 2>&1)" || {
+                echo "::error::Could not inspect universal Mach-O: $candidate ($lipo_info)"
+                exit 1
+              }
+              if [[ "$lipo_info" == *"arm64"* ]]; then
                 temp_file="${candidate}.arm64"
                 lipo "$candidate" -thin arm64 -output "$temp_file"
+                file -b "$temp_file" | grep -q 'Mach-O' || {
+                  echo "::error::Thinned output is not Mach-O: $candidate"
+                  exit 1
+                }
                 mv "$temp_file" "$candidate"
                 echo "Thinned universal Mach-O to arm64: $candidate"
               else
-                echo "::error::Universal Mach-O has no arm64 slice: $candidate ($description)"
+                echo "::error::Universal Mach-O has no arm64 slice: $candidate ($lipo_info)"
                 exit 1
               fi
             fi
