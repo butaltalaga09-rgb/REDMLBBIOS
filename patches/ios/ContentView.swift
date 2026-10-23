@@ -178,7 +178,7 @@ struct ContentView: View {
         case .outputFolder: showOutputFolderPicker = true
         }
         status = "Opening Files…"
-        log += "\\nOpening Files picker: \\(String(describing: kind))\\n"
+        log += "\nOpening Files picker: \(String(describing: kind))\n"
     }
 
     private func handleImport(_ result: Result<[URL], Error>, kind: PickerKind) {
@@ -186,7 +186,7 @@ struct ContentView: View {
         case .success(let urls):
             guard !urls.isEmpty else {
                 status = "Nothing selected"
-                log += "\\nNo file or folder selected.\\n"
+                log += "\nNo file or folder selected.\n"
                 return
             }
             do {
@@ -208,8 +208,8 @@ struct ContentView: View {
                         importedNames.append(selectedURL.lastPathComponent)
                     }
                     shaderURL = shaderInbox
-                    status = "Imported \\(importedNames.count) shader file(s)"
-                    log += "\\nImported shader files: \\(importedNames.joined(separator: ", "))\\nFolder: \\(shaderInbox.path)\\n"
+                    status = "Imported \(importedNames.count) shader file(s)"
+                    log += "\nImported shader files: \(importedNames.joined(separator: ", "))\nFolder: \(shaderInbox.path)\n"
                 } else {
                     guard let selectedURL = urls.first else { return }
                     let hasAccess = selectedURL.startAccessingSecurityScopedResource()
@@ -225,18 +225,18 @@ struct ContentView: View {
                     case .shaderFile: break
                     }
                     status = "Imported: " + target.lastPathComponent
-                    log += "\\nImported: \\(target.path)\\n"
+                    log += "\nImported: \(target.path)\n"
                 }
             } catch {
                 resultMessage = "Import failed: " + error.localizedDescription
                 status = "Import failed"
-                log += "\\nIMPORT ERROR: " + error.localizedDescription + "\\n"
+                log += "\nIMPORT ERROR: " + error.localizedDescription + "\n"
                 showResult = true
             }
         case .failure(let error):
             resultMessage = "File picker failed: " + error.localizedDescription
             status = "Picker failed"
-            log += "\\nPICKER ERROR: " + error.localizedDescription + "\\n"
+            log += "\nPICKER ERROR: " + error.localizedDescription + "\n"
             showResult = true
         }
     }
