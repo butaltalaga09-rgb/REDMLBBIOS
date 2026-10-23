@@ -110,7 +110,22 @@ jobs:
           source .ios-venv/bin/activate
           export PATH="$PROJECT_DIR/Vendor/Python.xcframework/ios-arm64/bin:$PATH"
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install --target "$PROJECT_DIR/PythonApp/site-packages" -r requirements-ios.txt
+          # Do not let pkg-config select macOS Homebrew libraries for an iOS binary.
+          # Pillow is still useful to UnityPy, but optional host codecs must stay disabled
+          # unless their native libraries have been built for iOS as well.
+          export PYLZ4_USE_SYSTEM_LZ4=False
+          python -m pip install --target "$PROJECT_DIR/PythonApp/site-packages" \
+            -C zlib=disable \
+            -C jpeg=disable \
+            -C tiff=disable \
+            -C freetype=disable \
+            -C raqm=disable \
+            -C lcms=disable \
+            -C webp=disable \
+            -C jpeg2000=disable \
+            -C imagequant=disable \
+            -C xcb=disable \
+            -r requirements-ios.txt
           while IFS= read -r -d '' module; do
             description="$(file -b "$module")"
             if [[ "$description" == *"Mach-O"* ]] && [[ "$description" != *"arm64"* ]]; then
