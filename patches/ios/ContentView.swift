@@ -355,7 +355,7 @@ private struct NativeDocumentPickerPresenter: UIViewControllerRepresentable {
                 types = [.item]
             }
 
-            let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: false)
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
             picker.delegate = self
             picker.allowsMultipleSelection = (kind == .shaderFile)
             picker.shouldShowFileExtensions = true
@@ -367,18 +367,26 @@ private struct NativeDocumentPickerPresenter: UIViewControllerRepresentable {
 
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
             isShowingPicker = false
-            setPresented?(false)
-            completion?(.success(urls))
+            let finish = completion
+            let dismiss = setPresented
             completion = nil
             setPresented = nil
+            DispatchQueue.main.async {
+                dismiss?(false)
+                finish?(.success(urls))
+            }
         }
 
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
             isShowingPicker = false
-            setPresented?(false)
-            completion?(.success([]))
+            let finish = completion
+            let dismiss = setPresented
             completion = nil
             setPresented = nil
+            DispatchQueue.main.async {
+                dismiss?(false)
+                finish?(.success([]))
+            }
         }
     }
 }
