@@ -75,7 +75,7 @@ jobs:
           cp patches/ios/mlbb_ios_bridge.py "$PROJECT_DIR/PythonApp/mlbb_ios_bridge.py"
           cp patches/ios/ConverterBridge.m "$PROJECT_DIR/App/ConverterBridge.m"
           echo "Applied repository-maintained Python diagnostics and defensive native bridge."
-          grep -q 'Stage 3/6: importing converter engine' "$PROJECT_DIR/PythonApp/mlbb_ios_bridge.py"
+          grep -q 'Stage 3/7: importing converter engine' "$PROJECT_DIR/PythonApp/mlbb_ios_bridge.py"
           grep -q 'Python argument tuple contains an uninitialized slot' "$PROJECT_DIR/App/ConverterBridge.m"
 
       - name: Apply Windows-style converter interface
