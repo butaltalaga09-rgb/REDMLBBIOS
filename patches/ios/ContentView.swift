@@ -39,6 +39,25 @@ struct ContentView: View {
     }
     private var effectiveShaders: URL? { shaderURL ?? bundledShaders }
 
+    private var importerHost: some View {
+        Color.clear
+        .fileImporter(isPresented: $showInputFolderPicker, allowedContentTypes: [.folder]) { result in
+        handleImport(result, kind: .inputFolder)
+        }
+        .fileImporter(isPresented: $showInputFilePicker, allowedContentTypes: [.item, .archive]) { result in
+        handleImport(result, kind: .inputFile)
+        }
+        .fileImporter(isPresented: $showShaderFilePicker, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+        handleImport(result, kind: .shaderFile)
+        }
+        .fileImporter(isPresented: $showShaderFolderPicker, allowedContentTypes: [.folder]) { result in
+        handleImport(result, kind: .shaderFolder)
+        }
+        .fileImporter(isPresented: $showOutputFolderPicker, allowedContentTypes: [.folder]) { result in
+        handleImport(result, kind: .outputFolder)
+        }
+    }
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -136,21 +155,6 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
             .navigationTitle("MLBB iOS Auto Converter")
             .navigationBarTitleDisplayMode(.inline)
-            .fileImporter(isPresented: $showInputFolderPicker, allowedContentTypes: [.folder]) { result in
-                handleImport(result, kind: .inputFolder)
-            }
-            .fileImporter(isPresented: $showInputFilePicker, allowedContentTypes: [.item, .archive]) { result in
-                handleImport(result, kind: .inputFile)
-            }
-            .fileImporter(isPresented: $showShaderFilePicker, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-                handleImport(result, kind: .shaderFile)
-            }
-            .fileImporter(isPresented: $showShaderFolderPicker, allowedContentTypes: [.folder]) { result in
-                handleImport(result, kind: .shaderFolder)
-            }
-            .fileImporter(isPresented: $showOutputFolderPicker, allowedContentTypes: [.folder]) { result in
-                handleImport(result, kind: .outputFolder)
-            }
             .alert("MLBB iOS Auto Converter", isPresented: $showResult) {
                 Button("OK", role: .cancel) { }
                 if resultURL != nil { Button("Share Output") { if let resultURL { share(resultURL) } } }
@@ -158,6 +162,7 @@ struct ContentView: View {
             .sheet(isPresented: $showShare) {
                 if let resultURL { ActivityView(items: [resultURL]) }
             }
+            .background(importerHost.frame(width: 0, height: 0))
         }.navigationViewStyle(StackNavigationViewStyle())
     }
 
