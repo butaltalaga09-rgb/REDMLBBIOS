@@ -223,6 +223,12 @@ struct ContentView: View {
         }
     }
 
+    // Single-selection fileImporter callbacks return Result<URL, Error>.
+    // Normalize them to the array-based handler used by multi-selection.
+    private func handleImport(_ result: Result<URL, Error>, kind: PickerKind) {
+        handleImport(result.map { [$0] }, kind: kind)
+    }
+
     private func handleImport(_ result: Result<[URL], Error>, kind: PickerKind) {
         switch result {
         case .success(let urls):
