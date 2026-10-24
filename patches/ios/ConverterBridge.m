@@ -123,6 +123,14 @@ static void InitializeEmbeddedPython(void) {
     PyConfig config;
     PyConfig_InitIsolatedConfig(&config);
     config.use_environment = 0;
+    /*
+     * Python-Apple-support enables Apple's system-log stream integration by
+     * default. In this embedded iOS app, importing _apple_support during
+     * Py_InitializeFromConfig fails and returns the exact error shown in the
+     * user's screenshot. The app records its own diagnostics to ConversionLog.txt,
+     * so use ordinary Python streams instead of the Apple unified-log bridge.
+     */
+    config.use_system_logger = 0;
     config.user_site_directory = 0;
     config.write_bytecode = 0;
     wchar_t *homeWide = Py_DecodeLocale(pythonHome.fileSystemRepresentation, NULL);
