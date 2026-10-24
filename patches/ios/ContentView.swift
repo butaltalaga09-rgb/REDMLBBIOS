@@ -163,6 +163,7 @@ struct ContentView: View {
                 if let resultURL { ActivityView(items: [resultURL]) }
             }
             .background(importerHost.frame(width: 0, height: 0))
+            .onAppear(perform: ensureShaderFolderInDocuments)
         }.navigationViewStyle(StackNavigationViewStyle())
     }
 
@@ -181,6 +182,26 @@ struct ContentView: View {
             Label(title, systemImage: icon).font(.system(size: 12, weight: .semibold))
                 .foregroundColor(UIColors.ink).frame(maxWidth: .infinity, minHeight: 38)
                 .background(UIColors.field, in: RoundedRectangle(cornerRadius: 5))
+        }
+    }
+
+    private func ensureShaderFolderInDocuments() {
+        let fm = FileManager.default
+        guard let bundled = bundledShaders else { return }
+        let documents = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let visibleFolder = documents.appendingPathComponent("iOSShaders", isDirectory: true)
+        do {
+            try fm.createDirectory(at: visibleFolder, withIntermediateDirectories: true)
+            let files = try fm.contentsOfDirectory(at: bundled, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+            for source in files where !source.lastPathComponent.hasPrefix(".") {
+                let destination = visibleFolder.appendingPathComponent(source.lastPathComponent)
+                if !fm.fileExists(atPath: destination.path) {
+                    try fm.copyItem(at: source, to: destination)
+                }
+            }
+            log += "\\nBundled shader files are available in Files > On My iPhone > MLBB iOS Auto Converter > iOSShaders.\\n"
+        } catch {
+            log += "\\nCould not prepare visible iOSShaders folder: \\(error.localizedDescription)\\n"
         }
     }
 
