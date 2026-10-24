@@ -9,9 +9,16 @@ def _validate_converted_bundles(output_dir: Path, logger) -> dict:
     """Re-open every emitted Unity bundle; never report success for unreadable/empty output."""
     import UnityPy
 
+    # ZIPs created on macOS may contain AppleDouble sidecar files under
+    # __MACOSX/ with names such as ._hero_lancelot_skin.unity3d. They are
+    # metadata, not Unity bundles, and UnityPy correctly finds no objects in them.
+    # Never validate these as converted assets.
     candidates = sorted(
         p for p in output_dir.rglob("*.unity3d")
-        if p.is_file() and not p.name.endswith(".bak")
+        if p.is_file()
+        and not p.name.endswith(".bak")
+        and not p.name.startswith("._")
+        and "__MACOSX" not in p.parts
     )
     if not candidates:
         raise RuntimeError(f"Output validation failed: no .unity3d files found under {output_dir}")
