@@ -90,6 +90,15 @@ jobs:
           grep -q 'Full texture validation' "$APP_SOURCE/ContentView.swift"
           grep -q 'Preserve shadows' "$APP_SOURCE/ContentView.swift"
 
+      - name: Preserve mesh and renderer dependency data
+        shell: bash
+        run: |
+          set -euo pipefail
+          python patches/ios/patch_converter_mesh_preservation.py
+          grep -q 'elif obj.type.name in {"Mesh", "MeshFilter", "MeshRenderer", "SkinnedMeshRenderer"}' "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"
+          python -m py_compile "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"
+          echo "Verified geometry/renderer typetrees are excluded from generic platform-string rewrites."
+
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
