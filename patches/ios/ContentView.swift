@@ -14,9 +14,11 @@ private enum UIColors {
 private enum PickerKind { case inputFolder, inputFile, shaderFile, shaderFolder, outputFolder }
 
 struct ContentView: View {
-    @State private var showPicker = false
-    @State private var activePicker: PickerKind = .inputFile
-    @State private var pickerKindForCompletion: PickerKind = .inputFile
+    @State private var showInputFolderPicker = false
+    @State private var showInputFilePicker = false
+    @State private var showShaderFilePicker = false
+    @State private var showShaderFolderPicker = false
+    @State private var showOutputFolderPicker = false
     @State private var inputURL: URL?
     @State private var shaderURL: URL?
     @State private var outputURL: URL?
@@ -36,11 +38,6 @@ struct ContentView: View {
         Bundle.main.resourceURL?.appendingPathComponent("PythonApp/ios_shaders", isDirectory: true)
     }
     private var effectiveShaders: URL? { shaderURL ?? bundledShaders }
-
-    // Keep the importer types stable. Changing allowedContentTypes at the same
-    // time as isPresented can make SwiftUI present a stale picker configuration.
-    // The handler validates the selected item according to pickerKindForCompletion.
-    private let pickerTypes: [UTType] = [.item, .folder, .archive]
 
     var body: some View {
         NavigationView {
@@ -139,12 +136,20 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
             .navigationTitle("MLBB iOS Auto Converter")
             .navigationBarTitleDisplayMode(.inline)
-            .fileImporter(
-                isPresented: $showPicker,
-                allowedContentTypes: pickerTypes,
-                allowsMultipleSelection: pickerKindForCompletion == .shaderFile
-            ) { result in
-                handleImport(result, kind: pickerKindForCompletion)
+            .fileImporter(isPresented: $showInputFolderPicker, allowedContentTypes: [.folder]) { result in
+                handleImport(result, kind: .inputFolder)
+            }
+            .fileImporter(isPresented: $showInputFilePicker, allowedContentTypes: [.item, .archive]) { result in
+                handleImport(result, kind: .inputFile)
+            }
+            .fileImporter(isPresented: $showShaderFilePicker, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+                handleImport(result, kind: .shaderFile)
+            }
+            .fileImporter(isPresented: $showShaderFolderPicker, allowedContentTypes: [.folder]) { result in
+                handleImport(result, kind: .shaderFolder)
+            }
+            .fileImporter(isPresented: $showOutputFolderPicker, allowedContentTypes: [.folder]) { result in
+                handleImport(result, kind: .outputFolder)
             }
             .alert("MLBB iOS Auto Converter", isPresented: $showResult) {
                 Button("OK", role: .cancel) { }
@@ -175,13 +180,21 @@ struct ContentView: View {
     }
 
     private func openPicker(_ kind: PickerKind) {
-        // Save the intended action before presenting; don't depend on a view
-        // state value that may be recomputed while the document picker is open.
-        activePicker = kind
-        pickerKindForCompletion = kind
+        // Separate importers prevent file/folder mode changes from reusing stale picker configuration.
+        showInputFolderPicker = false
+        showInputFilePicker = false
+        showShaderFilePicker = false
+        showShaderFolderPicker = false
+        showOutputFolderPicker = false
         status = "Opening Files…"
-        log += "\nOpening Files picker: \(String(describing: kind))\n"
-        showPicker = true
+        log += "\\nOpening Files picker: \\(String(describing: kind))\\n"
+        switch kind {
+        case .inputFolder: showInputFolderPicker = true
+        case .inputFile: showInputFilePicker = true
+        case .shaderFile: showShaderFilePicker = true
+        case .shaderFolder: showShaderFolderPicker = true
+        case .outputFolder: showOutputFolderPicker = true
+        }
     }
 
     private func handleImport(_ result: Result<[URL], Error>, kind: PickerKind) {
