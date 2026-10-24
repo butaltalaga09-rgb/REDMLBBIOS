@@ -10,9 +10,10 @@ import re
 import sys
 from pathlib import Path
 
-if len(sys.argv) != 2:
-    raise SystemExit("usage: patch_archspec_ios.py <site-packages>")
+if len(sys.argv) not in (2, 3):
+    raise SystemExit("usage: patch_archspec_ios.py <site-packages> [PythonApp]")
 root = Path(sys.argv[1])
+app_root = Path(sys.argv[2]) if len(sys.argv) == 3 else None
 
 # UnityPy imports tkinter.messagebox.NO only as a string constant. tkinter is a
 # desktop GUI toolkit and is deliberately not part of the iOS Python runtime.
@@ -79,22 +80,43 @@ elif new_guard in pptr_source:
 else:
     raise SystemExit("Could not safely patch PPtr.get_obj() guard; UnityPy source layout changed")
 
-# Some UnityPy releases implement PPtr attribute lookup differently and do
-# not define __getattr__. The direct instance-dict guard above is the primary
-# recursion fix; add this secondary guard only when the expected method exists.
+# Stop recursion when a PPtr is only partially initialized. In the reported
+# crash, copy.copy() asks hasattr(pointer, "__setstate__"), __getattr__ calls
+# get_obj(), and get_obj() reads file_id which re-enters __getattr__ forever.
+# Guard all PPtr internals that must already exist before attempting resolution.
 if "def __getattr__(self, attr):" in pptr_source:
-    if 'if attr == "_obj":' not in pptr_source:
+    guard = '        if attr in ("file_id", "path_id", "assets_file", "_obj"):\\n            try:\\n                object.__getattribute__(self, attr)\\n            except AttributeError:\\n                raise AttributeError(attr) from None\\n'
+    if 'attr in ("file_id", "path_id", "assets_file", "_obj")' not in pptr_source:
         pptr_source = pptr_source.replace(
-            "def __getattr__(self, attr):",
-            'def __getattr__(self, attr):\n        if attr == "_obj":\n            raise AttributeError(attr)',
+            "def __getattr__(self, attr):\\n",
+            "def __getattr__(self, attr):\\n" + guard,
             1,
         )
         pptr.write_text(pptr_source, encoding="utf-8")
-        print("Added recursion stop for missing UnityPy PPtr._obj")
+        print("Added safe initialization guard to UnityPy PPtr.__getattr__")
     else:
-        print("UnityPy PPtr missing-_obj guard already present")
+        print("UnityPy PPtr initialization guard already present")
 else:
-    print("UnityPy PPtr has no matching __getattr__; relying on direct _obj guard")
+    print("UnityPy PPtr has no matching __getattr__; direct PPtr guard remains active")
+
+# The converter copies a PPtr via copy.copy(). That invokes dynamic attribute
+# lookup on the pointer itself; keep the reference instead of copying the proxy.
+# Texture PPtr objects are references into the source asset file, not texture data.
+if app_root is not None:
+    converter = app_root / "mlbb_ios_converter.py"
+    if not converter.is_file():
+        raise SystemExit(f"Expected converter module not found: {converter}")
+    converter_source = converter.read_text(encoding="utf-8")
+    unsafe_copy = "reference_env.m_Texture = copy.copy(source_env.m_Texture)"
+    safe_reference = "reference_env.m_Texture = source_env.m_Texture"
+    if unsafe_copy in converter_source:
+        converter_source = converter_source.replace(unsafe_copy, safe_reference, 1)
+        converter.write_text(converter_source, encoding="utf-8")
+        print(f"Patched unsafe copy of Unity texture PPtr: {converter}")
+    elif safe_reference in converter_source:
+        print("Unity texture PPtr assignment is already safe")
+    else:
+        raise SystemExit("Could not find the expected texture PPtr copy statement; converter source layout changed")
 
 # Guard against this specific desktop-only import reappearing before packaging.
 remaining = game_object.read_text(encoding="utf-8")
