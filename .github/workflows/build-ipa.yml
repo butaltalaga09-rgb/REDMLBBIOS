@@ -90,6 +90,19 @@ jobs:
           grep -q 'Full texture validation' "$APP_SOURCE/ContentView.swift"
           grep -q 'Preserve shadows' "$APP_SOURCE/ContentView.swift"
 
+      - name: Preserve source Unity bundle compression flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          python patches/ios/patch_converter_bundle_save.py
+          grep -q 'root.save(packer="original")' "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"
+          if grep -q 'root.save(packer="lz4")' "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"; then
+            echo "::error::Forced LZ4 bundle repacking is still enabled."
+            exit 1
+          fi
+          python -m py_compile "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"
+          echo "Verified source UnityFS compression flags will be preserved."
+
       - name: Preserve mesh and renderer dependency data
         shell: bash
         run: |
