@@ -237,6 +237,11 @@ jobs:
             --exclude 'ensurepip/' \
             --exclude 'venv/' \
             "$HOST_STDLIB/" "$APP_PATH/python/lib/python3.12/"
+          # The embedded CPython build initializes Apple log streams before normal
+          # Python startup. Supply the Apple-specific adapter explicitly because
+          # this project assembles its stdlib from the host Python installation.
+          install -m 0644 "$GITHUB_WORKSPACE/patches/ios/_apple_support.py" \
+            "$APP_PATH/python/lib/python3.12/_apple_support.py"
           # Install only iOS ARM64 extension modules at the runtime's importable path.
           IOS_DYNLOAD="$APP_PATH/python/lib-arm64/python3.12/lib-dynload"
           test -d "$IOS_DYNLOAD"
