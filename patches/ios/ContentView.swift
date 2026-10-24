@@ -19,6 +19,7 @@ struct ContentView: View {
     @State private var showShaderFilePicker = false
     @State private var showShaderFolderPicker = false
     @State private var showOutputFolderPicker = false
+    @State private var activePickerKind: PickerKind = .inputFile
     @State private var inputURL: URL?
     @State private var shaderURL: URL?
     @State private var outputURL: URL?
@@ -147,21 +148,42 @@ struct ContentView: View {
             .onAppear(perform: ensureShaderFolderInDocuments)
         }
         .navigationViewStyle(StackNavigationViewStyle())
-        // Attach file importers to the visible root view so iOS can present Files.
-        .fileImporter(isPresented: $showInputFolderPicker, allowedContentTypes: [.folder]) { result in
-            handleImport(result, kind: .inputFolder)
+        // Use one importer only. Multiple fileImporter modifiers on the same
+        // SwiftUI view can compete for presentation and leave every picker inert.
+        .fileImporter(
+            isPresented: activePickerBinding,
+            allowedContentTypes: pickerContentTypes,
+            allowsMultipleSelection: activePickerKind == .shaderFile
+        ) { result in
+            handleImport(result, kind: activePickerKind)
         }
-        .fileImporter(isPresented: $showInputFilePicker, allowedContentTypes: [.item, .archive]) { result in
-            handleImport(result, kind: .inputFile)
-        }
-        .fileImporter(isPresented: $showShaderFilePicker, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-            handleImport(result, kind: .shaderFile)
-        }
-        .fileImporter(isPresented: $showShaderFolderPicker, allowedContentTypes: [.folder]) { result in
-            handleImport(result, kind: .shaderFolder)
-        }
-        .fileImporter(isPresented: $showOutputFolderPicker, allowedContentTypes: [.folder]) { result in
-            handleImport(result, kind: .outputFolder)
+    }
+
+    private var activePickerBinding: Binding<Bool> {
+        Binding(
+            get: {
+                showInputFolderPicker || showInputFilePicker || showShaderFilePicker || showShaderFolderPicker || showOutputFolderPicker
+            },
+            set: { isPresented in
+                if !isPresented {
+                    showInputFolderPicker = false
+                    showInputFilePicker = false
+                    showShaderFilePicker = false
+                    showShaderFolderPicker = false
+                    showOutputFolderPicker = false
+                }
+            }
+        )
+    }
+
+    private var pickerContentTypes: [UTType] {
+        switch activePickerKind {
+        case .inputFolder, .shaderFolder, .outputFolder:
+            return [.folder]
+        case .inputFile:
+            return [.item, .archive]
+        case .shaderFile:
+            return [.item]
         }
     }
 
@@ -212,12 +234,16 @@ struct ContentView: View {
         showOutputFolderPicker = false
         status = "Opening Files…"
         log += "\\nOpening Files picker: \\(String(describing: kind))\\n"
-        switch kind {
-        case .inputFolder: showInputFolderPicker = true
-        case .inputFile: showInputFilePicker = true
-        case .shaderFile: showShaderFilePicker = true
-        case .shaderFolder: showShaderFolderPicker = true
-        case .outputFolder: showOutputFolderPicker = true
+        activePickerKind = kind
+        // Trigger the single fileImporter after its filter has been updated.
+        DispatchQueue.main.async {
+            switch kind {
+            case .inputFolder: showInputFolderPicker = true
+            case .inputFile: showInputFilePicker = true
+            case .shaderFile: showShaderFilePicker = true
+            case .shaderFolder: showShaderFolderPicker = true
+            case .outputFolder: showOutputFolderPicker = true
+            }
         }
     }
 
