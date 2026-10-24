@@ -2,8 +2,14 @@ name: Build iOS IPA
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-ipa.yml'
+      - 'MLBB_iOS_Converter_Offline_Project.zip.part*'
+      - 'patches/ios/**'
   push:
-    branches: [main, master]
+    branches: [main, master, windows-style-ios-ui]
     paths:
       - '.github/workflows/build-ipa.yml'
       - 'MLBB_iOS_Converter_Offline_Project.zip.part*'
@@ -55,7 +61,7 @@ jobs:
           marker = '        PRODUCT_NAME: ishamlbbios'
           if marker not in spec:
               raise SystemExit("Could not find the app target settings to set bundle versions.")
-          spec = spec.replace(marker, marker + '\n        MARKETING_VERSION: "1.0.0"\n        CURRENT_PROJECT_VERSION: "1"\n        INFOPLIST_KEY_CFBundleShortVersionString: "1.0.0"\n        INFOPLIST_KEY_CFBundleVersion: "1"')
+          spec = spec.replace(marker, marker + '\n        MARKETING_VERSION: "1.0.0"\n        CURRENT_PROJECT_VERSION: "1"\n        INFOPLIST_KEY_CFBundleShortVersionString: "1.0.0"\n        INFOPLIST_KEY_CFBundleVersion: "1"\n        INFOPLIST_KEY_UIFileSharingEnabled: YES\n        INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: YES')
           path.write_text(spec, encoding="utf-8")
           PY
           echo "PROJECT_DIR=$GITHUB_WORKSPACE/source/MLBB_iOS_Converter_Offline_Project" >> "$GITHUB_ENV"
@@ -69,75 +75,42 @@ jobs:
           cp patches/ios/mlbb_ios_bridge.py "$PROJECT_DIR/PythonApp/mlbb_ios_bridge.py"
           cp patches/ios/ConverterBridge.m "$PROJECT_DIR/App/ConverterBridge.m"
           echo "Applied repository-maintained Python diagnostics and defensive native bridge."
-          grep -q 'Stage 3/6: importing converter engine' "$PROJECT_DIR/PythonApp/mlbb_ios_bridge.py"
+          grep -q 'Stage 3/7: importing converter engine' "$PROJECT_DIR/PythonApp/mlbb_ios_bridge.py"
           grep -q 'Python argument tuple contains an uninitialized slot' "$PROJECT_DIR/App/ConverterBridge.m"
 
-      - name: Replace unreliable SwiftUI file importer with native document picker
+      - name: Apply Windows-style converter interface
         shell: bash
         run: |
           set -euo pipefail
           APP_SOURCE="$GITHUB_WORKSPACE/source/MLBB_iOS_Converter_Offline_Project/App"
-          cat > "$APP_SOURCE/DocumentPicker.swift" <<'SWIFT'
-          import SwiftUI
-          import UIKit
-          import UniformTypeIdentifiers
+          test -s patches/ios/ContentView.swift
+          cp patches/ios/ContentView.swift "$APP_SOURCE/ContentView.swift"
+          echo "Applied Windows-style iOS converter interface."
+          grep -q 'CONVERT TO iOS' "$APP_SOURCE/ContentView.swift"
+          grep -q 'Full texture validation' "$APP_SOURCE/ContentView.swift"
+          grep -q 'Preserve shadows' "$APP_SOURCE/ContentView.swift"
 
-          struct DocumentPicker: UIViewControllerRepresentable {
-              let onCompletion: (Result<[URL], Error>) -> Void
+      - name: Preserve source Unity bundle compression flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          python patches/ios/patch_converter_bundle_save.py
+          grep -q 'root.save(packer="original")' "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"
+          if grep -q 'root.save(packer="lz4")' "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"; then
+            echo "::error::Forced LZ4 bundle repacking is still enabled."
+            exit 1
+          fi
+          python -m py_compile "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"
+          echo "Verified source UnityFS compression flags will be preserved."
 
-              func makeCoordinator() -> Coordinator {
-                  Coordinator(onCompletion: onCompletion)
-              }
-
-              func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-                  let unityType = UTType(filenameExtension: "unity3d", conformingTo: .data) ?? .data
-                  let picker = UIDocumentPickerViewController(
-                      forOpeningContentTypes: [.zip, unityType],
-                      asCopy: true
-                  )
-                  picker.delegate = context.coordinator
-                  picker.allowsMultipleSelection = false
-                  return picker
-              }
-
-              func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
-
-              final class Coordinator: NSObject, UIDocumentPickerDelegate {
-                  private let onCompletion: (Result<[URL], Error>) -> Void
-
-                  init(onCompletion: @escaping (Result<[URL], Error>) -> Void) {
-                      self.onCompletion = onCompletion
-                  }
-
-                  func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-                      onCompletion(.success(urls))
-                  }
-
-                  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-                      onCompletion(.success([]))
-                  }
-              }
-          }
-          SWIFT
-
-          python - "$APP_SOURCE/ContentView.swift" <<'PY'
-          from pathlib import Path
-          import sys
-          path = Path(sys.argv[1])
-          source = path.read_text(encoding="utf-8")
-          start = source.find("            .fileImporter(")
-          end = source.find('            .alert("Conversion failed"', start)
-          if start < 0 or end < 0:
-              raise SystemExit("Could not safely locate the existing SwiftUI fileImporter block.")
-          source = source[:start] + '            .sheet(isPresented: $showImporter) {\n                DocumentPicker(onCompletion: handleImport)\n            }\n' + source[end:]
-          path.write_text(source, encoding="utf-8")
-          if ".fileImporter(" in source or "DocumentPicker(onCompletion: handleImport)" not in source:
-              raise SystemExit("File-picker replacement validation failed.")
-          helper = path.parent / "DocumentPicker.swift"
-          if not helper.is_file() or "UIDocumentPickerViewController" not in helper.read_text(encoding="utf-8"):
-              raise SystemExit("Native document-picker helper is missing.")
-          print("Patched ContentView to use UIDocumentPickerViewController with ZIP and UNITY3D selection.")
-          PY
+      - name: Preserve mesh and renderer dependency data
+        shell: bash
+        run: |
+          set -euo pipefail
+          python patches/ios/patch_converter_mesh_preservation.py
+          grep -q 'elif obj.type.name in {"Mesh", "MeshFilter", "MeshRenderer", "SkinnedMeshRenderer"}' "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"
+          python -m py_compile "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"
+          echo "Verified geometry/renderer typetrees are excluded from generic platform-string rewrites."
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -225,6 +198,19 @@ jobs:
             -C xcb=disable \
             "Pillow>=10.0.0,<12" \
             -r requirements-ios.txt
+          # Patch desktop-only dependency assumptions (UnityPy tkinter constant and archspec sysctl subprocess probe).
+          python "$GITHUB_WORKSPACE/patches/ios/patch_archspec_ios.py" "$PROJECT_DIR/PythonApp/site-packages" "$PROJECT_DIR/PythonApp"
+          grep -q 'reference_env.m_Texture = source_env.m_Texture' "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"
+          if grep -q 'reference_env.m_Texture = copy.copy(source_env.m_Texture)' "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"; then
+            echo "::error::Unsafe Unity texture PPtr copy remains in converter."
+            exit 1
+          fi
+          grep -q 'NO = "no"' "$PROJECT_DIR/PythonApp/site-packages/UnityPy/classes/GameObject.py"
+          grep -q 'self.__dict__.get("_obj") is not None' "$PROJECT_DIR/PythonApp/site-packages/UnityPy/classes/PPtr.py"
+          if grep -q 'from tkinter.messagebox import NO' "$PROJECT_DIR/PythonApp/site-packages/UnityPy/classes/GameObject.py"; then
+            echo "::error::UnityPy still imports tkinter, which is unavailable on iOS."
+            exit 1
+          fi
           while IFS= read -r -d '' module; do
             description="$(file -b "$module")"
             if [[ "$description" == *"Mach-O"* ]] && [[ "$description" != *"arm64"* ]]; then
@@ -286,6 +272,11 @@ jobs:
             --exclude 'ensurepip/' \
             --exclude 'venv/' \
             "$HOST_STDLIB/" "$APP_PATH/python/lib/python3.12/"
+          # The embedded CPython build initializes Apple log streams before normal
+          # Python startup. Supply the Apple-specific adapter explicitly because
+          # this project assembles its stdlib from the host Python installation.
+          install -m 0644 "$GITHUB_WORKSPACE/patches/ios/_apple_support.py" \
+            "$APP_PATH/python/lib/python3.12/_apple_support.py"
           # Install only iOS ARM64 extension modules at the runtime's importable path.
           IOS_DYNLOAD="$APP_PATH/python/lib-arm64/python3.12/lib-dynload"
           test -d "$IOS_DYNLOAD"
