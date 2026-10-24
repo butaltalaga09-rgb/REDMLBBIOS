@@ -79,17 +79,22 @@ elif new_guard in pptr_source:
 else:
     raise SystemExit("Could not safely patch PPtr.get_obj() guard; UnityPy source layout changed")
 
-# __getattr__ must not resolve the internal _obj field through get_obj itself.
-if "def __getattr__(self, attr):" not in pptr_source:
-    raise SystemExit("Could not find UnityPy PPtr.__getattr__; source layout changed")
-if 'if attr == "_obj":' not in pptr_source:
-    pptr_source = pptr_source.replace(
-        "def __getattr__(self, attr):",
-        'def __getattr__(self, attr):\n        if attr == "_obj":\n            raise AttributeError(attr)',
-        1,
-    )
-    pptr.write_text(pptr_source, encoding="utf-8")
-    print("Added recursion stop for missing UnityPy PPtr._obj")
+# Some UnityPy releases implement PPtr attribute lookup differently and do
+# not define __getattr__. The direct instance-dict guard above is the primary
+# recursion fix; add this secondary guard only when the expected method exists.
+if "def __getattr__(self, attr):" in pptr_source:
+    if 'if attr == "_obj":' not in pptr_source:
+        pptr_source = pptr_source.replace(
+            "def __getattr__(self, attr):",
+            'def __getattr__(self, attr):\n        if attr == "_obj":\n            raise AttributeError(attr)',
+            1,
+        )
+        pptr.write_text(pptr_source, encoding="utf-8")
+        print("Added recursion stop for missing UnityPy PPtr._obj")
+    else:
+        print("UnityPy PPtr missing-_obj guard already present")
+else:
+    print("UnityPy PPtr has no matching __getattr__; relying on direct _obj guard")
 
 # Guard against this specific desktop-only import reappearing before packaging.
 remaining = game_object.read_text(encoding="utf-8")
