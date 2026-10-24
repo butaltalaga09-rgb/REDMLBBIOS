@@ -39,24 +39,6 @@ struct ContentView: View {
     }
     private var effectiveShaders: URL? { shaderURL ?? bundledShaders }
 
-    private var importerHost: some View {
-        Color.clear
-        .fileImporter(isPresented: $showInputFolderPicker, allowedContentTypes: [.folder]) { result in
-        handleImport(result, kind: .inputFolder)
-        }
-        .fileImporter(isPresented: $showInputFilePicker, allowedContentTypes: [.item, .archive]) { result in
-        handleImport(result, kind: .inputFile)
-        }
-        .fileImporter(isPresented: $showShaderFilePicker, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-        handleImport(result, kind: .shaderFile)
-        }
-        .fileImporter(isPresented: $showShaderFolderPicker, allowedContentTypes: [.folder]) { result in
-        handleImport(result, kind: .shaderFolder)
-        }
-        .fileImporter(isPresented: $showOutputFolderPicker, allowedContentTypes: [.folder]) { result in
-        handleImport(result, kind: .outputFolder)
-        }
-    }
 
     var body: some View {
         NavigationView {
@@ -162,9 +144,25 @@ struct ContentView: View {
             .sheet(isPresented: $showShare) {
                 if let resultURL { ActivityView(items: [resultURL]) }
             }
-            .background(importerHost.frame(width: 0, height: 0))
             .onAppear(perform: ensureShaderFolderInDocuments)
-        }.navigationViewStyle(StackNavigationViewStyle())
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+        // Attach file importers to the visible root view so iOS can present Files.
+        .fileImporter(isPresented: $showInputFolderPicker, allowedContentTypes: [.folder]) { result in
+            handleImport(result, kind: .inputFolder)
+        }
+        .fileImporter(isPresented: $showInputFilePicker, allowedContentTypes: [.item, .archive]) { result in
+            handleImport(result, kind: .inputFile)
+        }
+        .fileImporter(isPresented: $showShaderFilePicker, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+            handleImport(result, kind: .shaderFile)
+        }
+        .fileImporter(isPresented: $showShaderFolderPicker, allowedContentTypes: [.folder]) { result in
+            handleImport(result, kind: .shaderFolder)
+        }
+        .fileImporter(isPresented: $showOutputFolderPicker, allowedContentTypes: [.folder]) { result in
+            handleImport(result, kind: .outputFolder)
+        }
     }
 
     @ViewBuilder private func pathRow<Actions: View>(_ title: String, value: String, @ViewBuilder actions: () -> Actions) -> some View {
