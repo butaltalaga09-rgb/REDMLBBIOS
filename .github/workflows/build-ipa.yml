@@ -177,7 +177,12 @@ jobs:
             "Pillow>=10.0.0,<12" \
             -r requirements-ios.txt
           # Patch desktop-only dependency assumptions (UnityPy tkinter constant and archspec sysctl subprocess probe).
-          python "$GITHUB_WORKSPACE/patches/ios/patch_archspec_ios.py" "$PROJECT_DIR/PythonApp/site-packages"
+          python "$GITHUB_WORKSPACE/patches/ios/patch_archspec_ios.py" "$PROJECT_DIR/PythonApp/site-packages" "$PROJECT_DIR/PythonApp"
+          grep -q 'reference_env.m_Texture = source_env.m_Texture' "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"
+          if grep -q 'reference_env.m_Texture = copy.copy(source_env.m_Texture)' "$PROJECT_DIR/PythonApp/mlbb_ios_converter.py"; then
+            echo "::error::Unsafe Unity texture PPtr copy remains in converter."
+            exit 1
+          fi
           grep -q 'NO = "no"' "$PROJECT_DIR/PythonApp/site-packages/UnityPy/classes/GameObject.py"
           grep -q 'self.__dict__.get("_obj") is not None' "$PROJECT_DIR/PythonApp/site-packages/UnityPy/classes/PPtr.py"
           if grep -q 'from tkinter.messagebox import NO' "$PROJECT_DIR/PythonApp/site-packages/UnityPy/classes/GameObject.py"; then
