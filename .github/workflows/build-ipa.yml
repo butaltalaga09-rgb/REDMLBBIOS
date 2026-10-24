@@ -176,6 +176,8 @@ jobs:
             -C xcb=disable \
             "Pillow>=10.0.0,<12" \
             -r requirements-ios.txt
+          # iOS CPython does not provide _posixsubprocess; disable archspec sysctl subprocess detection.
+          python "$GITHUB_WORKSPACE/patches/ios/patch_archspec_ios.py" "$PROJECT_DIR/PythonApp/site-packages"
           while IFS= read -r -d '' module; do
             description="$(file -b "$module")"
             if [[ "$description" == *"Mach-O"* ]] && [[ "$description" != *"arm64"* ]]; then
