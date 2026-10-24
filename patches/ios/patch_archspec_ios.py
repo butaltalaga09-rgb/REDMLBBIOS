@@ -85,11 +85,11 @@ else:
 # get_obj(), and get_obj() reads file_id which re-enters __getattr__ forever.
 # Guard all PPtr internals that must already exist before attempting resolution.
 if "def __getattr__(self, attr):" in pptr_source:
-    guard = '        if attr in ("file_id", "path_id", "assets_file", "_obj"):\\n            try:\\n                object.__getattribute__(self, attr)\\n            except AttributeError:\\n                raise AttributeError(attr) from None\\n'
+    guard = '        if attr in ("file_id", "path_id", "assets_file", "_obj"):\n            try:\n                object.__getattribute__(self, attr)\n            except AttributeError:\n                raise AttributeError(attr) from None\n'
     if 'attr in ("file_id", "path_id", "assets_file", "_obj")' not in pptr_source:
         pptr_source = pptr_source.replace(
-            "def __getattr__(self, attr):\\n",
-            "def __getattr__(self, attr):\\n" + guard,
+            "def __getattr__(self, attr):\n",
+            "def __getattr__(self, attr):\n" + guard,
             1,
         )
         pptr.write_text(pptr_source, encoding="utf-8")
