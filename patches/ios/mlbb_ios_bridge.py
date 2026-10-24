@@ -51,7 +51,7 @@ def convert(input_path: str, shader_path: str, output_parent: str, create_zip: b
     log_path = destination / "ConversionLog.txt"
     def log(message: object) -> None:
         with log_path.open("a", encoding="utf-8") as stream:
-            stream.write(str(message).rstrip()+"\\n"); stream.flush()
+            stream.write(str(message).rstrip()+"\n"); stream.flush()
             try: os.fsync(stream.fileno())
             except OSError: pass
     if not log_path.exists(): log("Starting MLBB iOS Auto Converter")
