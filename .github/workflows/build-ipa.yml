@@ -179,6 +179,8 @@ jobs:
           # Patch desktop-only dependency assumptions (UnityPy tkinter constant and archspec sysctl subprocess probe).
           python "$GITHUB_WORKSPACE/patches/ios/patch_archspec_ios.py" "$PROJECT_DIR/PythonApp/site-packages"
           grep -q 'NO = "no"' "$PROJECT_DIR/PythonApp/site-packages/UnityPy/classes/GameObject.py"
+          grep -q 'self.__dict__.get("_obj") is not None' "$PROJECT_DIR/PythonApp/site-packages/UnityPy/classes/PPtr.py"
+          grep -q 'if attr == "_obj":' "$PROJECT_DIR/PythonApp/site-packages/UnityPy/classes/PPtr.py"
           if grep -q 'from tkinter.messagebox import NO' "$PROJECT_DIR/PythonApp/site-packages/UnityPy/classes/GameObject.py"; then
             echo "::error::UnityPy still imports tkinter, which is unavailable on iOS."
             exit 1
