@@ -176,8 +176,13 @@ jobs:
             -C xcb=disable \
             "Pillow>=10.0.0,<12" \
             -r requirements-ios.txt
-          # iOS CPython does not provide _posixsubprocess; disable archspec sysctl subprocess detection.
+          # Patch desktop-only dependency assumptions (UnityPy tkinter constant and archspec sysctl subprocess probe).
           python "$GITHUB_WORKSPACE/patches/ios/patch_archspec_ios.py" "$PROJECT_DIR/PythonApp/site-packages"
+          grep -q 'NO = "no"' "$PROJECT_DIR/PythonApp/site-packages/UnityPy/classes/GameObject.py"
+          if grep -q 'from tkinter.messagebox import NO' "$PROJECT_DIR/PythonApp/site-packages/UnityPy/classes/GameObject.py"; then
+            echo "::error::UnityPy still imports tkinter, which is unavailable on iOS."
+            exit 1
+          fi
           while IFS= read -r -d '' module; do
             description="$(file -b "$module")"
             if [[ "$description" == *"Mach-O"* ]] && [[ "$description" != *"arm64"* ]]; then
